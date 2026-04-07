@@ -2,33 +2,35 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Converter v1.6 - Behavior Engine</title>
+    <title>Universal MOD Converter v1.7</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --main: #ffca28; --bg: #121212; --card: #1e1e1e; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #e0e0e0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 15px; border-top: 5px solid var(--main); }
-        h1 { color: var(--main); margin-bottom: 5px; }
-        .sub { color: #888; margin-bottom: 25px; }
-        button { background: var(--main); color: #000; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        button:hover { opacity: 0.8; transform: translateY(-2px); }
-        button:disabled { background: #444; color: #777; transform: none; }
-        #log { background: #000; color: #a5d6a7; padding: 15px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; margin-top: 20px; border: 1px solid #333; }
+        :root { --accent: #00ff88; --bg: #0a0c10; --card: #161b22; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #c9d1d9; padding: 20px; }
+        .container { max-width: 950px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 10px; border: 1px solid #30363d; }
+        h1 { color: var(--accent); border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        .status-bar { background: #000; padding: 10px 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid var(--accent); font-family: monospace; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        button { background: var(--accent); color: #000; border: none; padding: 12px 25px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #444; color: #888; }
+        #log { background: #0d1117; color: #8b949e; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-size: 12px; border: 1px solid #30363d; line-height: 1.5; }
+        .log-hit { color: var(--accent); }
+        .log-warn { color: #e3b341; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>CONVERTER PHASE 1.6: BEHAVIOR</h1>
-    <p class="sub">アイテム定義(JSON)の自動生成エンジンを搭載</p>
+    <h1>UNIVERSAL MOD CONVERTER <small style="font-size: 0.5em; vertical-align: middle;">v1.7 Deep Scan</small></h1>
+    <div class="status-bar" id="status">READY: JARファイルをドロップするか選択してください。</div>
     
-    <input type="file" id="modFile" accept=".jar" style="margin-bottom: 20px;">
-    <div>
-        <button onclick="processMod()">RUN CONVERSION</button>
+    <div class="btn-group">
+        <input type="file" id="modFile" accept=".jar">
+        <button onclick="processMod()">UNPACK & ANALYZE</button>
         <button id="downloadBtn" onclick="downloadAddon()" disabled>DOWNLOAD .MCADDON</button>
     </div>
 
-    <div id="log">>> システムスタンバイ...</div>
+    <div id="log">>> 解析ログ待機中...</div>
 </div>
 
 <script>
@@ -38,76 +40,118 @@
     async function processMod() {
         const fileInput = document.getElementById('modFile');
         const log = document.getElementById('log');
+        const status = document.getElementById('status');
         const downloadBtn = document.getElementById('downloadBtn');
 
         if (!fileInput.files[0]) return;
         
         try {
-            log.innerText = ">> 変換シーケンス開始...\n";
+            status.innerText = "⏳ ディープスキャン実行中...";
+            log.innerHTML = ">> <span class='log-hit'>SCAN START: " + fileInput.files[0].name + "</span>\n";
+            
             const javaZip = await JSZip.loadAsync(fileInput.files[0]);
             const addonZip = new JSZip();
+            const files = javaZip.files;
 
-            // 1. 基本情報の取得
-            const tomlFile = javaZip.file(/mods\.toml$/i)[0];
-            const tomlText = await tomlFile.async("string");
-            const modId = tomlText.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || "mod";
-            modDisplayName = tomlText.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || modId;
+            let modId = "unknown";
+            let modName = "Converted Mod";
 
-            // 2. マニフェスト生成 (RP用とBP用の2種類が必要)
-            const rpUUID = crypto.randomUUID();
-            const bpUUID = crypto.randomUUID();
-            
-            // 簡易的にRP側のみ作成 (今回は実験のため)
+            // --- 1. メタデータ全探索 (mods.toml, mcmod.info, fabric.mod.json) ---
+            log.innerHTML += ">> メタデータファイルを探索中...\n";
+            const metaFiles = Object.keys(files).filter(path => 
+                path.endsWith("mods.toml") || path.endsWith("mcmod.info") || path.endsWith("fabric.mod.json")
+            );
+
+            if (metaFiles.length > 0) {
+                const metaPath = metaFiles[0];
+                const content = await files[metaPath].async("string");
+                log.innerHTML += `>> <span class='log-hit'>DETECTED META: ${metaPath}</span>\n`;
+
+                if (metaPath.endsWith(".toml")) {
+                    modId = content.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || modId;
+                    modName = content.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || modId;
+                } else {
+                    try {
+                        const json = JSON.parse(content.trim());
+                        const data = Array.isArray(json) ? json[0] : (json.modList ? json.modList[0] : json);
+                        modId = data.modid || data.id || modId;
+                        modName = data.name || data.displayName || modId;
+                    } catch(e) { log.innerHTML += ">> <span class='log-warn'>WARN: JSON解析失敗。デフォルト値を使用します。</span>\n"; }
+                }
+            }
+            modDisplayName = modName;
+
+            // --- 2. 統合版マニフェスト生成 ---
             const manifest = {
                 "format_version": 2,
-                "header": { "name": modDisplayName, "uuid": rpUUID, "version": [1, 0, 0], "min_engine_version": [1, 21, 0] },
+                "header": { "name": modName, "uuid": crypto.randomUUID(), "version": [1, 0, 0], "min_engine_version": [1, 21, 0] },
                 "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1, 0, 0] }]
             };
             addonZip.file("manifest.json", JSON.stringify(manifest, null, 4));
 
-            // 3. テクスチャ解析 & アイテム定義生成
+            // --- 3. 全ファイル・インテリジェント・マッピング ---
             let itemTex = { "resource_pack_name": "converted", "texture_name": "atlas.items", "texture_data": {} };
-            const files = javaZip.files;
+            let count = 0;
 
             for (const path in files) {
-                if (path.endsWith(".png") && path.includes("/textures/")) {
+                if (files[path].dir) continue;
+
+                // 画像ファイルの処理
+                if (path.endsWith(".png")) {
                     const blob = await files[path].async("blob");
-                    const fileName = path.split('/').pop().replace(".png", "");
-                    const internalPath = path.substring(path.indexOf("textures/"));
+                    let destPath = "";
 
-                    // テクスチャを配置
-                    addonZip.file(internalPath, blob);
+                    // ファイル名ベースで判定（パスに依存しすぎない）
+                    const fileName = path.split('/').pop();
 
-                    // もし「アイテム」フォルダにある画像なら、自動的にアイテム定義を作成
-                    if (path.includes("/item/")) {
-                        itemTex.texture_data[fileName] = { "textures": internalPath.replace(".png", "") };
-
-                        // 【新機能】Behavior Pack 用のアイテム定義 JSON を作成
-                        const itemDefinition = {
-                            "format_version": "1.21.0",
-                            "minecraft:item": {
-                                "description": { "identifier": `${modId}:${fileName}` },
-                                "components": {
-                                    "minecraft:icon": fileName,
-                                    "minecraft:display_name": { "value": fileName },
-                                    "minecraft:stacked_by_data": true
+                    if (fileName.toLowerCase() === "icon.png" || fileName.toLowerCase() === "logo.png") {
+                        destPath = "pack_icon.png";
+                    } else if (path.includes("textures/")) {
+                        // textures以降のパスを抽出して、統合版の標準に合わせる
+                        destPath = path.substring(path.indexOf("textures/"));
+                        
+                        // アイテム画像なら定義に追加
+                        if (destPath.includes("/item/")) {
+                            const shortName = fileName.replace(".png", "");
+                            itemTex.texture_data[shortName] = { "textures": destPath.replace(".png", "") };
+                            
+                            // Behavior Pack 用の簡易定義も作成
+                            const itemDef = {
+                                "format_version": "1.21.0",
+                                "minecraft:item": {
+                                    "description": { "identifier": `${modId}:${shortName}` },
+                                    "components": { "minecraft:icon": shortName, "minecraft:display_name": { "value": shortName } }
                                 }
-                            }
-                        };
-                        // 統合版のアイテムフォルダへ配置
-                        addonZip.file(`items/${fileName}.item.json`, JSON.stringify(itemDefinition, null, 4));
-                        log.innerText += `>> アイテム定義生成: ${modId}:${fileName}\n`;
+                            };
+                            addonZip.file(`items/${shortName}.item.json`, JSON.stringify(itemDef, null, 4));
+                        }
                     }
+
+                    if (destPath) {
+                        addonZip.file(destPath, blob);
+                        count++;
+                    }
+                }
+                
+                // 言語ファイルの処理 (.json または .lang)
+                if (path.endsWith(".json") && path.includes("/lang/")) {
+                    const langContent = await files[path].async("string");
+                    addonZip.file("texts/en_US.lang", langContent.replace(/["'{}]/g, "").replace(/:/g, "="));
+                    log.innerHTML += ">> <span class='log-hit'>LANG CONVERTED</span>\n";
                 }
             }
 
             addonZip.file("textures/item_texture.json", JSON.stringify(itemTex, null, 4));
             
             generatedZip = addonZip;
-            log.innerText += `\n>> 成功: 構造の構築が完了しました。`;
+            log.innerHTML += `\n>> <span class='log-hit'>COMPLETED: ${count} 個のファイルを処理しました。</span>\n`;
+            status.innerText = "✅ 変換完了！";
             downloadBtn.disabled = false;
+            log.scrollTop = log.scrollHeight;
+
         } catch (e) {
-            log.innerText += "\n[ERROR] " + e.message;
+            status.innerText = "❌ エラー";
+            log.innerHTML += `\n<span class='log-warn'>[CRITICAL ERROR] ${e.message}</span>`;
         }
     }
 
@@ -115,7 +159,7 @@
         const b = await generatedZip.generateAsync({type:"blob"});
         const a = document.createElement("a");
         a.href = URL.createObjectURL(b);
-        a.download = `${modDisplayName}.mcpack`;
+        a.download = `${modDisplayName.replace(/\s+/g, '_')}.mcpack`;
         a.click();
     }
 </script>
