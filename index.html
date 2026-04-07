@@ -2,88 +2,81 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v3.9 - Deep Assets Scanner</title>
+    <title>MOD Engine v4.0 - Presence Footsteps Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --neon-purple: #bc13fe; --bg: #050505; }
-        body { background: var(--bg); color: var(--neon-purple); font-family: 'Consolas', monospace; text-align: center; padding: 20px; }
-        .terminal { border: 2px solid var(--neon-purple); padding: 20px; display: inline-block; border-radius: 15px; background: #101010; width: 90%; max-width: 700px; box-shadow: 0 0 25px rgba(188, 19, 254, 0.3); }
-        button { background: var(--neon-purple); color: #fff; border: none; padding: 15px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 8px; text-transform: uppercase; letter-spacing: 2px; }
-        #log { margin-top: 15px; color: #00ff41; font-size: 11px; text-align: left; height: 200px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; }
+        :root { --pf-green: #4caf50; --bg: #0d0d0d; }
+        body { background: var(--bg); color: var(--pf-green); font-family: 'Consolas', monospace; text-align: center; padding: 20px; }
+        .panel { border: 2px solid var(--pf-green); padding: 25px; display: inline-block; border-radius: 15px; background: #1a1a1a; width: 90%; max-width: 700px; box-shadow: 0 0 20px rgba(76, 175, 80, 0.4); }
+        button { background: var(--pf-green); color: #000; border: none; padding: 15px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; text-transform: uppercase; }
+        #log { margin-top: 15px; color: #fff; font-size: 11px; text-align: left; height: 250px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
-<div class="terminal">
-    <h2>DEEP ASSETS SCANNER v3.9</h2>
-    <p style="font-size:11px; color:#888;">[全ディレクトリ再帰スキャン & 音源抽出モデル]</p>
+<div class="panel">
+    <h2>PRESENCE FOOTSTEPS CONVERTER v4.0</h2>
+    <p style="font-size:11px; color:#aaa;">[Presence Footsteps 構造解析モデル]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="scanAllAssets()">全 assets をスキャンして変換</button>
+    <button onclick="convertPresenceFootsteps()">MOD独自の音響定義を統合版へ移植</button>
     
-    <div id="log">READY: JARファイルを選択してください...</div>
+    <div id="log">READY: Presence Footsteps の JAR を選択してください...</div>
 </div>
 
 <script>
-    async function scanAllAssets() {
+    async function convertPresenceFootsteps() {
         const fileInput = document.getElementById('modFile');
         const log = document.getElementById('log');
         if (!fileInput.files[0]) return;
 
-        log.innerHTML = ">>> スキャン開始...\n";
+        log.innerHTML = ">>> Presence Footsteps 深層解析開始...\n";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
         const manifest = {
             "format_version": 2,
-            "header": { "name": "Deep_Sound_Fix_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "PF_Sound_Restoration", "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
 
         let soundDefs = { "format_version": "1.14.0", "sound_definitions": {} };
-        let foundCount = 0;
+        let count = 0;
 
-        // 全ファイルをループ
+        // 1. 全ての .ogg を救出し、正規のパスへ再配置
         for (const path in jar.files) {
-            const file = jar.files[path];
-            if (file.dir) continue;
-
-            // assets フォルダ以下の .ogg ファイルをターゲットにする
-            if (path.includes("assets/") && path.endsWith(".ogg")) {
-                const blob = await file.async("blob");
+            if (path.endsWith(".ogg")) {
+                const blob = await jar.files[path].async("blob");
                 
-                // パスを解析して統合版用の「イベント名」を作る
-                // assets/modid/sounds/sub/sound.ogg -> modid.sub.sound
-                let eventName = path
-                    .replace(/^assets\/[^\/]+\/sounds\//, "") // modid/sounds/ 部分をカット
-                    .replace(/^assets\/[^\/]+\//, "")       // soundsフォルダがない場合も想定
-                    .replace(".ogg", "")
-                    .replace(/\//g, ".");                   // 階層をドットに変換
-
-                // 統合版での物理配置パス
-                const internalPath = "sounds/extracted/" + eventName.replace(/\./g, "_");
+                // Presence Footsteps の複雑なパスを単純化
+                // 例: assets/presencefootsteps/sounds/stone/step1.ogg -> sounds/pf/stone_step1.ogg
+                const fileName = path.split('/').pop().replace(".ogg", "");
+                const folderName = path.split('/').slice(-2, -1)[0];
+                const internalPath = `sounds/pf/${folderName}_${fileName}`;
+                
                 addon.file(internalPath + ".ogg", blob);
 
-                // sound_definitions.json への登録
+                // 全ての音を個別のサウンドイベントとして登録
+                const eventName = `pf.${folderName}.${fileName}`;
                 soundDefs.sound_definitions[eventName] = {
-                    "category": (path.includes("music") || path.includes("ambient")) ? "music" : "neutral",
-                    "sounds": [{
-                        "name": internalPath,
-                        "stream": blob.size > 250000, // 250KB以上はストリーム再生
-                        "volume": 1.0
-                    }]
+                    "category": "player",
+                    "sounds": [{ "name": internalPath, "stream": false, "volume": 1.0 }]
                 };
 
-                // もし「足音(step)」や「ブロック(dig)」なら、バニラのイベント名でも登録して上書きを狙う
-                if (eventName.includes("step") || eventName.includes("dig") || eventName.includes("break")) {
-                    const vanillaType = eventName.split('.').pop(); // step1 -> step
-                    const vanillaEvent = eventName.includes("step") ? "step.stone" : "dig.stone"; // 仮で石に設定
-                    soundDefs.sound_definitions[vanillaEvent] = soundDefs.sound_definitions[eventName];
+                // バニラの足音をこのMODの「stone」や「grass」系の音で強制上書き
+                if (path.includes("stone") && (path.includes("step") || path.includes("walk"))) {
+                    soundDefs.sound_definitions["step.stone"] = soundDefs.sound_definitions[eventName];
+                }
+                if (path.includes("grass") && (path.includes("step") || path.includes("walk"))) {
+                    soundDefs.sound_definitions["step.grass"] = soundDefs.sound_definitions[eventName];
+                }
+                if (path.includes("wood") && (path.includes("step") || path.includes("walk"))) {
+                    soundDefs.sound_definitions["step.wood"] = soundDefs.sound_definitions[eventName];
                 }
 
-                foundCount++;
-                log.innerHTML += `FOUND: ${path} -> ${eventName}\n`;
+                count++;
+                log.innerHTML += `CONVERTED: ${path} -> ${eventName}\n`;
                 log.scrollTop = log.scrollHeight;
             }
         }
@@ -94,9 +87,9 @@
             const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
             const a = document.createElement("a");
             a.href = URL.createObjectURL(content);
-            a.download = "DeepSoundFix.mcpack"; 
+            a.download = "PF_Sound_Fix.mcpack"; 
             a.click();
-            log.innerHTML += `\n>>> 完了！合計 ${foundCount} 個の音源を救出しました。\n>>> グローバルリソースの最優先に配置してください。`;
+            log.innerHTML += `\n>>> 完了！ ${count} 個の PF 専用音源を統合版に適合させました。`;
         } catch (e) {
             log.innerHTML += `\nERROR: ${e.message}`;
         }
