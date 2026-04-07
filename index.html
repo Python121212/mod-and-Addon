@@ -2,107 +2,150 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD解析実験室 - AdvancementPlaques対応版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Java to Bedrock: 10-Year Project Lab</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2c3e50; color: white; padding: 40px; }
-        .container { max-width: 800px; margin: 0 auto; background: #34495e; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-        input[type="file"] { margin: 20px 0; display: block; }
-        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        :root { --primary: #3498db; --bg: #2c3e50; --card: #34495e; --text: #ecf0f1; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
+        .container { background: var(--card); padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 700px; width: 100%; }
+        h1 { border-bottom: 2px solid var(--primary); padding-bottom: 10px; font-size: 24px; }
+        .controls { margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+        input[type="file"] { background: #1e272e; padding: 10px; border-radius: 5px; flex-grow: 1; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         button:hover { background: #2980b9; }
-        #status { margin: 20px 0; padding: 10px; border-radius: 5px; }
-        .success { background: #27ae60; }
-        .error { background: #e74c3c; }
-        #output { background: #1e272e; color: #d1d8e0; padding: 20px; border-radius: 5px; white-space: pre-wrap; font-family: 'Consolas', monospace; overflow-x: auto; border: 1px solid #485460; }
+        button:disabled { background: #7f8c8d; cursor: not-allowed; }
+        #status { margin: 15px 0; padding: 10px; border-radius: 5px; font-size: 14px; background: #1e272e; }
+        #output { background: #1e272e; color: #57ecad; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: 'Consolas', monospace; font-size: 13px; max-height: 300px; overflow-y: auto; border: 1px solid #485460; }
+        .success-text { color: #2ecc71; }
+        .error-text { color: #e74c3c; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>10年計画: MOD解析プロトタイプ</h1>
-    <p>対象ファイル: <code>AdvancementPlaques-1.21.4-forge-1.6.9.jar</code></p>
+    <h1>MOD変換実験室 v1.2</h1>
+    <p>Java版Forge MODを、統合版の<code>.mcpack</code>(リソースパック)へ変換します。</p>
     
-    <input type="file" id="modFile" accept=".jar">
-    <button onclick="processMod()">解析を実行する</button>
+    <div class="controls">
+        <input type="file" id="modFile" accept=".jar">
+        <button onclick="processMod()">1. 解析実行</button>
+        <button id="downloadBtn" onclick="downloadAddon()" disabled>2. ダウンロード</button>
+    </div>
 
-    <div id="status">ファイルを待機中...</div>
+    <div id="status">JARファイルを選択してください...</div>
+    
     <h3>生成された manifest.json</h3>
-    <div id="output">解析後にここに表示されます</div>
+    <div id="output">// 解析結果がここに表示されます</div>
 </div>
 
 <script>
-async function processMod() {
-    const fileInput = document.getElementById('modFile');
-    const output = document.getElementById('output');
-    const status = document.getElementById('status');
+    let generatedZip = null;
+    let modDisplayName = "converted_addon";
 
-    if (!fileInput.files[0]) {
-        status.className = "error";
-        status.innerText = "❌ ファイルを選択してください";
-        return;
-    }
+    // メイン解析ロジック
+    async function processMod() {
+        const fileInput = document.getElementById('modFile');
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        const downloadBtn = document.getElementById('downloadBtn');
 
-    try {
-        status.className = "";
-        status.innerText = "⏳ JARを解凍して設定ファイルを探索中...";
-        
-        const zip = await JSZip.loadAsync(fileInput.files[0]);
-        
-        // 【修正ポイント】ファイルパスを厳密に指定、または検索
-        let tomlContent = "";
-        const modsToml = zip.file("META-INF/mods.toml");
+        if (!fileInput.files[0]) {
+            status.innerHTML = '<span class="error-text">❌ ファイルが選択されていません</span>';
+            return;
+        }
 
-        if (modsToml) {
-            tomlContent = await modsToml.async("string");
-        } else {
-            // もしパスが違った場合のために全探索
-            const found = zip.file(/mods\.toml$/i);
-            if (found.length > 0) {
-                tomlContent = await found[0].async("string");
+        try {
+            status.innerText = "⏳ JARを解凍中...";
+            downloadBtn.disabled = true;
+            const javaZip = await JSZip.loadAsync(fileInput.files[0]);
+            
+            // 1. 設定ファイルの探索 (mods.toml または mcmod.info)
+            let tomlContent = "";
+            const modsToml = javaZip.file("META-INF/mods.toml") || javaZip.file(/mods\.toml$/i)[0];
+            const legacyInfo = javaZip.file("mcmod.info");
+
+            let modId = "unknown";
+            
+            if (modsToml) {
+                tomlContent = await modsToml.async("string");
+                modId = tomlContent.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || "converted_mod";
+                modDisplayName = tomlContent.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || modId;
+                status.innerText = "✅ Forge 1.13+ 形式を検出しました";
+            } else if (legacyInfo) {
+                const infoText = await legacyInfo.async("string");
+                const json = JSON.parse(infoText.trim());
+                const data = Array.isArray(json) ? json[0] : (json.modList ? json.modList[0] : json);
+                modId = data.modid || "legacy_mod";
+                modName = data.name || modId;
+                status.innerText = "✅ Forge 1.12.2以前 形式を検出しました";
+            } else {
+                throw new Error("設定ファイルが見つかりません。Java版MODではない可能性があります。");
             }
-        }
 
-        if (!tomlContent) {
-            throw new Error("META-INF/mods.toml が見つかりませんでした。");
-        }
-
-        // --- データの抽出 ---
-        // このMOD特有の書き方に対応
-        const modId = tomlContent.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || "advancementplaques";
-        const displayName = tomlContent.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || "Advancement Plaques";
-        const version = tomlContent.match(/version\s*=\s*["']([^"']+)["']/)?.[1] || "1.6.9";
-
-        // --- 統合版形式へ変換 ---
-        const manifest = {
-            "format_version": 2,
-            "header": {
-                "name": displayName,
-                "description": `Original Java Mod ID: ${modId} (v${version})`,
-                "uuid": crypto.randomUUID(),
-                "version": [1, 0, 0],
-                "min_engine_version": [1, 21, 0]
-            },
-            "modules": [
-                {
-                    "type": "resources",
+            // 2. 統合版マニフェストの組み立て
+            const manifest = {
+                "format_version": 2,
+                "header": {
+                    "name": modDisplayName,
+                    "description": `Converted from Java Mod: ${modId}`,
                     "uuid": crypto.randomUUID(),
-                    "version": [1, 0, 0]
-                }
-            ]
-        };
+                    "version": [1, 0, 0],
+                    "min_engine_version": [1, 21, 0]
+                },
+                "modules": [
+                    {
+                        "type": "resources",
+                        "uuid": crypto.randomUUID(),
+                        "version": [1, 0, 0]
+                    }
+                ]
+            };
 
-        status.className = "success";
-        status.innerText = "✅ 解析に成功しました！統合版用のマニフェストを作成しました。";
-        output.innerText = JSON.stringify(manifest, null, 4);
+            // 3. アドオンZIP(mcpack)の構築開始
+            status.innerText = "📦 アドオンパッケージを作成中...";
+            const addonZip = new JSZip();
+            
+            // manifest.json を追加
+            addonZip.file("manifest.json", JSON.stringify(manifest, null, 4));
 
-    } catch (err) {
-        status.className = "error";
-        status.innerText = "❌ エラー: " + err.message;
-        output.innerText = "JARの中身を確認してください。mods.toml が META-INF フォルダに存在する必要があります。";
-        console.error(err);
+            // アイコンの抽出 (icon.png -> pack_icon.png)
+            const iconFile = javaZip.file("icon.png") || javaZip.file(/icon\.png$/i)[0];
+            if (iconFile) {
+                const iconData = await iconFile.async("blob");
+                addonZip.file("pack_icon.png", iconData);
+                status.innerText += " (アイコンも抽出完了！)";
+            }
+
+            // 言語ファイルのテストコピー (もしあれば)
+            // 今後のフェーズで拡張しやすいように、ここにロジックを追加可能
+
+            generatedZip = addonZip;
+            output.innerText = JSON.stringify(manifest, null, 4);
+            status.innerHTML = '<span class="success-text">✨ 準備完了！「ダウンロード」を押してください。</span>';
+            downloadBtn.disabled = false;
+
+        } catch (err) {
+            status.innerHTML = `<span class="error-text">❌ エラー: ${err.message}</span>`;
+            console.error(err);
+        }
     }
-}
+
+    // ダウンロード実行
+    async function downloadAddon() {
+        if (!generatedZip) return;
+
+        const content = await generatedZip.generateAsync({ type: "blob" });
+        const link = document.createElement("a");
+        
+        // ファイル名を安全な形に変換して .mcpack にする
+        const safeName = modDisplayName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        link.href = URL.createObjectURL(content);
+        link.download = `${safeName}.mcpack`;
+        link.click();
+        
+        URL.revokeObjectURL(link.href);
+    }
 </script>
 
 </body>
