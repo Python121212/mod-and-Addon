@@ -2,41 +2,41 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v3.5 - Sound Master</title>
+    <title>MOD Engine v3.6 - World Sound Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --sound-gold: #ffd700; --bg: #0a0a0a; }
-        body { background: var(--bg); color: var(--sound-gold); font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
-        .console { border: 2px dashed var(--sound-gold); padding: 20px; display: inline-block; border-radius: 10px; background: #1a1a1a; max-width: 90%; }
-        button { background: var(--sound-gold); color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; }
-        #log { margin-top: 15px; color: #00ff00; font-size: 11px; text-align: left; height: 100px; overflow-y: auto; border: 1px solid #333; padding: 5px; }
+        :root { --neon: #00ffff; --bg: #000; }
+        body { background: var(--bg); color: var(--neon); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; }
+        .panel { border: 2px solid var(--neon); padding: 25px; display: inline-block; border-radius: 20px; background: #111; box-shadow: 0 0 30px var(--neon); width: 90%; max-width: 600px; }
+        button { background: var(--neon); color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 10px; text-transform: uppercase; }
+        #console { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 150px; overflow-y: scroll; background: #050505; border: 1px solid #333; padding: 10px; }
     </style>
 </head>
 <body>
 
-<div class="console">
-    <h2>SOUND MASTER v3.5</h2>
-    <p style="font-size:12px;">[VANILLA OVERRIDE / PATH MAPPING]</p>
+<div class="panel">
+    <h2>WORLD SOUND FIX v3.6</h2>
+    <p style="font-size:11px;">[環境音 / 足音 / ブロック音 全移植]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="buildMasterPack()">解析 & サウンド修復パック発行</button>
+    <button onclick="buildWorldSoundPack()">全音源・深層変換実行</button>
     
-    <div id="log">1. JARを選択<br>2. 変換ボタンをクリック</div>
+    <div id="console">ログ: 待機中...</div>
 </div>
 
 <script>
-    async function buildMasterPack() {
+    async function buildWorldSoundPack() {
         const fileInput = document.getElementById('modFile');
-        const log = document.getElementById('log');
+        const consoleLog = document.getElementById('console');
         if (!fileInput.files[0]) return;
 
-        log.innerHTML += "⏳ ディープスキャン開始...<br>";
+        consoleLog.innerHTML = "> スキャン開始...<br>";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
         const manifest = {
             "format_version": 2,
-            "header": { "name": "Sound_Master_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "World_Sound_Fix_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
@@ -48,43 +48,42 @@
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
                 
-                // Javaのパス: assets/minecraft/sounds/mob/zombie/say.ogg
-                // 統合版イベント名: mob.zombie.say
+                // Javaのパスを統合版のイベント名に変換
+                // 例: assets/minecraft/sounds/block/stone/step1.ogg -> block.stone.step
                 let eventName = path
-                    .replace("assets/minecraft/sounds/", "")
-                    .replace("assets/sounds/", "")
-                    .replace(".ogg", "")
-                    .replace(/\//g, ".");
+                    .replace(/assets\/[^\/]+\/sounds\//, "") // assets/modid/sounds/ を消去
+                    .replace(/\d+\.ogg$/, "")              // 末尾の数字と拡張子を消去 (step1 -> step)
+                    .replace(/\//g, ".");                  // スラッシュをドットに
 
-                const internalPath = "sounds/master/" + eventName.replace(/\./g, "_");
+                const internalPath = "sounds/world/" + eventName.replace(/\./g, "_") + "_" + Math.floor(Math.random()*1000);
                 addon.file(internalPath + ".ogg", blob);
 
-                // バニラを上書きするための詳細定義
+                // 長い音（環境音やBGM）か、短い音（足音や破壊音）かを判別
+                const isLongSound = blob.size > 200000; // 200KB以上ならストリーム
+
                 soundDefs.sound_definitions[eventName] = {
-                    "category": "neutral",
-                    "sounds": [
-                        {
-                            "name": internalPath,
-                            "stream": false,
-                            "volume": 1.0,
-                            "pitch": 1.0,
-                            "load_on_low_memory": true
-                        }
-                    ]
+                    "category": (path.includes("music") || path.includes("ambient")) ? "music" : "neutral",
+                    "sounds": [{
+                        "name": internalPath,
+                        "stream": isLongSound,
+                        "volume": 1.0,
+                        "load_on_low_memory": true
+                    }]
                 };
                 count++;
-                log.innerHTML += `登録: ${eventName}<br>`;
+                consoleLog.innerHTML += `Match: ${eventName}<br>`;
             }
         }
         
+        // 統合版が最も優先して読み込むファイル名
         addon.file("sound_definitions.json", JSON.stringify(soundDefs, null, 4));
 
         const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(content);
-        a.download = "SoundMaster.mcpack"; 
+        a.download = "WorldSoundFix.mcpack"; 
         a.click();
-        log.innerHTML += `✅ 成功: ${count}個の音を修復しました。`;
+        consoleLog.innerHTML += `> ✅ 完了: ${count}個の音源をマッピングしました。`;
     }
 </script>
 </body>
