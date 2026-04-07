@@ -2,88 +2,79 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v3.6 - World Sound Fix</title>
+    <title>MOD Engine v3.7 - Hard Overwrite</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --neon: #00ffff; --bg: #000; }
-        body { background: var(--bg); color: var(--neon); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; }
-        .panel { border: 2px solid var(--neon); padding: 25px; display: inline-block; border-radius: 20px; background: #111; box-shadow: 0 0 30px var(--neon); width: 90%; max-width: 600px; }
-        button { background: var(--neon); color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 10px; text-transform: uppercase; }
-        #console { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 150px; overflow-y: scroll; background: #050505; border: 1px solid #333; padding: 10px; }
+        :root { --danger: #ff3e3e; --bg: #050505; }
+        body { background: var(--bg); color: var(--danger); font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
+        .panel { border: 2px solid var(--danger); padding: 25px; display: inline-block; border-radius: 10px; background: #111; width: 90%; max-width: 600px; }
+        button { background: var(--danger); color: #fff; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; }
+        #console { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 150px; overflow-y: scroll; background: #000; border: 1px solid #333; padding: 10px; }
     </style>
 </head>
 <body>
 
 <div class="panel">
-    <h2>WORLD SOUND FIX v3.6</h2>
-    <p style="font-size:11px;">[環境音 / 足音 / ブロック音 全移植]</p>
+    <h2>HARD OVERWRITE v3.7</h2>
+    <p style="font-size:11px;">[物理パス強制上書きモデル]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="buildWorldSoundPack()">全音源・深層変換実行</button>
+    <button onclick="buildHardPack()">強制上書きパックを生成</button>
     
     <div id="console">ログ: 待機中...</div>
 </div>
 
 <script>
-    async function buildWorldSoundPack() {
+    async function buildHardPack() {
         const fileInput = document.getElementById('modFile');
         const consoleLog = document.getElementById('console');
         if (!fileInput.files[0]) return;
 
-        consoleLog.innerHTML = "> スキャン開始...<br>";
+        consoleLog.innerHTML = "> 強制構築開始...<br>";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
+        // 1. マニフェスト (UUIDを刷新)
         const manifest = {
             "format_version": 2,
-            "header": { "name": "World_Sound_Fix_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "Hard_Overwrite_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
 
         let soundDefs = { "format_version": "1.14.0", "sound_definitions": {} };
-        let count = 0;
 
         for (const path in jar.files) {
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
                 
-                // Javaのパスを統合版のイベント名に変換
-                // 例: assets/minecraft/sounds/block/stone/step1.ogg -> block.stone.step
-                let eventName = path
-                    .replace(/assets\/[^\/]+\/sounds\//, "") // assets/modid/sounds/ を消去
-                    .replace(/\d+\.ogg$/, "")              // 末尾の数字と拡張子を消去 (step1 -> step)
-                    .replace(/\//g, ".");                  // スラッシュをドットに
+                // Javaのパスを解析
+                const rawPath = path.replace(/assets\/[^\/]+\/sounds\//, ""); 
+                
+                // 統合版が「物理的」に音を探しに行く場所に直接置く
+                // 例: sounds/dig/stone1.ogg, sounds/step/grass1.ogg
+                const destPath = "sounds/" + rawPath.toLowerCase();
+                addon.file(destPath, blob);
 
-                const internalPath = "sounds/world/" + eventName.replace(/\./g, "_") + "_" + Math.floor(Math.random()*1000);
-                addon.file(internalPath + ".ogg", blob);
-
-                // 長い音（環境音やBGM）か、短い音（足音や破壊音）かを判別
-                const isLongSound = blob.size > 200000; // 200KB以上ならストリーム
-
+                // イベント名も登録（二段構え）
+                let eventName = rawPath.replace(".ogg", "").replace(/\//g, ".");
                 soundDefs.sound_definitions[eventName] = {
-                    "category": (path.includes("music") || path.includes("ambient")) ? "music" : "neutral",
-                    "sounds": [{
-                        "name": internalPath,
-                        "stream": isLongSound,
-                        "volume": 1.0,
-                        "load_on_low_memory": true
-                    }]
+                    "category": "neutral",
+                    "sounds": [{ "name": destPath.replace(".ogg", ""), "stream": blob.size > 200000 }]
                 };
-                count++;
-                consoleLog.innerHTML += `Match: ${eventName}<br>`;
+                
+                consoleLog.innerHTML += `Overwrite: ${destPath}<br>`;
             }
         }
         
-        // 統合版が最も優先して読み込むファイル名
         addon.file("sound_definitions.json", JSON.stringify(soundDefs, null, 4));
 
         const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(content);
-        a.download = "WorldSoundFix.mcpack"; 
+        a.download = "HardSoundFix.mcpack"; 
         a.click();
-        consoleLog.innerHTML += `> ✅ 完了: ${count}個の音源をマッピングしました。`;
+        consoleLog.innerHTML += `> ✅ 完了。全ての音を物理パスに配置しました。`;
     }
 </script>
 </body>
