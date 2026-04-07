@@ -2,84 +2,89 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v3.4 - Sound Override</title>
+    <title>MOD Engine v3.5 - Sound Master</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --sound: #ff00ff; --bg: #050505; }
-        body { background: var(--bg); color: var(--sound); font-family: monospace; text-align: center; padding: 30px; }
-        .card { border: 1px solid var(--sound); padding: 25px; display: inline-block; border-radius: 15px; background: #0a0a0a; box-shadow: 0 0 20px rgba(255,0,255,0.2); }
-        button { background: var(--sound); color: #000; border: none; padding: 18px 35px; font-weight: bold; cursor: pointer; margin-top: 20px; border-radius: 5px; width: 100%; }
-        #status { margin-top: 15px; color: #aaa; font-size: 11px; }
+        :root { --sound-gold: #ffd700; --bg: #0a0a0a; }
+        body { background: var(--bg); color: var(--sound-gold); font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
+        .console { border: 2px dashed var(--sound-gold); padding: 20px; display: inline-block; border-radius: 10px; background: #1a1a1a; max-width: 90%; }
+        button { background: var(--sound-gold); color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; }
+        #log { margin-top: 15px; color: #00ff00; font-size: 11px; text-align: left; height: 100px; overflow-y: auto; border: 1px solid #333; padding: 5px; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>MOD ENGINE v3.4</h2>
-    <p style="font-size:12px;">[SOUND OVERRIDE & ATOMIC FIX]</p>
+<div class="console">
+    <h2>SOUND MASTER v3.5</h2>
+    <p style="font-size:12px;">[VANILLA OVERRIDE / PATH MAPPING]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="buildOverridePack()">解析 & 上書き用パック発行</button>
+    <button onclick="buildMasterPack()">解析 & サウンド修復パック発行</button>
     
-    <div id="status">音源をバニラ優先順位より上に配置します。</div>
+    <div id="log">1. JARを選択<br>2. 変換ボタンをクリック</div>
 </div>
 
 <script>
-    async function buildOverridePack() {
+    async function buildMasterPack() {
         const fileInput = document.getElementById('modFile');
-        const log = document.getElementById('status');
-        if (!fileInput.files[0]) return alert("JARを選択してください");
+        const log = document.getElementById('log');
+        if (!fileInput.files[0]) return;
 
-        log.innerText = "⏳ 音源をオーバーライド中...";
+        log.innerHTML += "⏳ ディープスキャン開始...<br>";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
-        // 1. マニフェスト (UUIDを新しくしてキャッシュを回避)
         const manifest = {
             "format_version": 2,
-            "header": { "name": "Sound_Override_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "Sound_Master_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
 
-        // 統合版のサウンド定義（バニラ音を置き換えるための構造）
         let soundDefs = { "format_version": "1.14.0", "sound_definitions": {} };
+        let count = 0;
 
-        // 2. 音源の抽出と「上書き登録」
         for (const path in jar.files) {
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
-                // パスからファイル名を取得
-                const fileName = path.split('/').pop().replace(".ogg", "");
-                const safePath = "sounds/custom/" + fileName;
                 
-                // 物理ファイルを配置
-                addon.file(safePath + ".ogg", blob);
+                // Javaのパス: assets/minecraft/sounds/mob/zombie/say.ogg
+                // 統合版イベント名: mob.zombie.say
+                let eventName = path
+                    .replace("assets/minecraft/sounds/", "")
+                    .replace("assets/sounds/", "")
+                    .replace(".ogg", "")
+                    .replace(/\//g, ".");
 
-                // sound_definitions.json への登録
-                // Java版の名前（例: entity.zombie.ambient）をそのまま統合版のイベントとして登録
-                const eventName = path.replace("assets/minecraft/sounds/", "").replace(".ogg", "").replace(/\//g, ".");
-                
+                const internalPath = "sounds/master/" + eventName.replace(/\./g, "_");
+                addon.file(internalPath + ".ogg", blob);
+
+                // バニラを上書きするための詳細定義
                 soundDefs.sound_definitions[eventName] = {
                     "category": "neutral",
-                    "sounds": [ { "name": safePath, "load_on_low_memory": true } ]
+                    "sounds": [
+                        {
+                            "name": internalPath,
+                            "stream": false,
+                            "volume": 1.0,
+                            "pitch": 1.0,
+                            "load_on_low_memory": true
+                        }
+                    ]
                 };
+                count++;
+                log.innerHTML += `登録: ${eventName}<br>`;
             }
         }
         
-        // 重要：ファイル名を sound_definitions.json にする
         addon.file("sound_definitions.json", JSON.stringify(soundDefs, null, 4));
 
-        try {
-            const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
-            const url = URL.createObjectURL(content);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "SoundOverride.mcpack"; 
-            document.body.appendChild(a);
-            a.click();
-            log.innerText = "✅ 完了！以前のパックを削除してから入れてください。";
-        } catch (e) { log.innerText = "ERROR: " + e.message; }
+        const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(content);
+        a.download = "SoundMaster.mcpack"; 
+        a.click();
+        log.innerHTML += `✅ 成功: ${count}個の音を修復しました。`;
     }
 </script>
 </body>
