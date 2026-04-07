@@ -2,115 +2,78 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v4.2 - PF Deep Link</title>
+    <title>MOD Engine v4.4 - JSON Optimizer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --pf-lime: #cddc39; --bg: #000; }
-        body { background: var(--bg); color: var(--pf-lime); font-family: monospace; text-align: center; padding: 20px; }
-        .terminal { border: 3px double var(--pf-lime); padding: 25px; display: inline-block; border-radius: 10px; background: #0a0a0a; width: 95%; max-width: 800px; }
-        button { background: var(--pf-lime); color: #000; border: none; padding: 20px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; font-size: 1.2rem; box-shadow: 0 0 15px var(--pf-lime); }
-        #log { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 350px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; line-height: 1.4; }
+        body { background: #000; color: #0f0; font-family: monospace; text-align: center; padding: 20px; }
+        .terminal { border: 2px solid #0f0; padding: 20px; display: inline-block; background: #050505; width: 90%; }
+        button { background: #0f0; color: #000; border: none; padding: 15px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; }
+        #log { margin-top: 10px; color: #888; font-size: 10px; text-align: left; height: 200px; overflow-y: auto; border: 1px solid #333; padding: 5px; }
     </style>
 </head>
 <body>
-
 <div class="terminal">
-    <h2>PF ACOUSTIC DEEP LINK v4.2</h2>
-    <p style="font-size:11px; color:#888;">[全サブフォルダ強制スキャン・足音完全乗っ取りモデル]</p>
-    
+    <h2>JSON OPTIMIZER v4.4</h2>
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="pfDeepLinkConversion()">足音ファイルを強制抽出して変換</button>
-    
-    <div id="log">>>> 待機中... 
-Presence Footsteps の JAR を選択してボタンを押してください。</div>
+    <button onclick="optimizeBuild()">軽量化ビルド実行</button>
+    <div id="log">>>> 待機中...</div>
 </div>
 
 <script>
-    async function pfDeepLinkConversion() {
+    async function optimizeBuild() {
         const fileInput = document.getElementById('modFile');
         const log = document.getElementById('log');
         if (!fileInput.files[0]) return;
 
-        log.innerHTML = ">>> 深度スキャン開始...\n";
+        log.innerHTML = ">>> JSON最適化中...\n";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
+        // 最小構成マニフェスト
         const manifest = {
             "format_version": 2,
-            "header": { "name": "PF_Acoustic_Link_v4", "uuid": crypto.randomUUID(), "version": [4,2,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "PF_Optimized", "uuid": crypto.randomUUID(), "version": [4,4,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
 
         let soundDefs = { "format_version": "1.14.0", "sound_definitions": {} };
-        let categories = { "stone": [], "grass": [], "wood": [], "gravel": [], "sand": [], "water": [], "snow": [], "flesh": [] };
+        const categories = ["stone", "grass", "wood", "gravel", "sand", "snow", "water"];
 
-        // 1. 全ての .ogg をスキャンし、キーワードでカテゴリ分け
         for (const path in jar.files) {
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
                 const lowerPath = path.toLowerCase();
                 
-                // ファイル名を識別しやすく加工
-                const cleanName = path.split('/').join('_').replace('.ogg', '');
-                const internalPath = "sounds/pf_deep/" + cleanName;
-                addon.file(internalPath + ".ogg", blob);
+                // パスを極限まで短縮
+                const shortId = Math.random().toString(36).substring(7);
+                const internalPath = `s/${shortId}`; 
+                addon.file(`${internalPath}.ogg`, blob);
 
-                // カテゴリ判定 (Presence Footsteps のフォルダ構造に対応)
-                let matched = false;
-                for (let key in categories) {
-                    if (lowerPath.includes(key)) {
-                        categories[key].push(internalPath);
-                        matched = true;
-                        break;
-                    }
+                // カテゴリ判定
+                let cat = categories.find(c => lowerPath.includes(c)) || "stone";
+                let event = `step.${cat}`;
+
+                if (!soundDefs.sound_definitions[event]) {
+                    soundDefs.sound_definitions[event] = { "category": "player", "sounds": [] };
                 }
-                // 判定漏れは stone (デフォルト) へ
-                if (!matched) categories["stone"].push(internalPath);
                 
-                log.innerHTML += `救出成功: ${path}\n`;
-                log.scrollTop = log.scrollHeight;
+                // 重複を避けつつ登録
+                if (soundDefs.sound_definitions[event].sounds.length < 20) {
+                    soundDefs.sound_definitions[event].sounds.push(internalPath); // 文字列のみで記述（軽量化）
+                }
             }
         }
 
-        // 2. 統合版バニラの全足音イベントを、救出した音で上書き
-        const mapping = {
-            "step.stone": "stone",
-            "step.grass": "grass",
-            "step.wood": "wood",
-            "step.gravel": "gravel",
-            "step.sand": "sand",
-            "step.snow": "snow",
-            "step.water": "water",
-            "hit.stone": "stone",
-            "fall.stone": "stone"
-        };
+        // 改行や空白を入れずにJSONを出力
+        addon.file("sound_definitions.json", JSON.stringify(soundDefs));
 
-        for (let event in mapping) {
-            let catKey = mapping[event];
-            if (categories[catKey] && categories[catKey].length > 0) {
-                // 1つのイベントに最大15個まで音を割り当てる（マイクラの制限対策）
-                const selectedSounds = categories[catKey].slice(0, 15); 
-                soundDefs.sound_definitions[event] = {
-                    "category": "player",
-                    "sounds": selectedSounds.map(s => ({ "name": s, "volume": 1.0 }))
-                };
-                log.innerHTML += `結合完了: ${event} に ${selectedSounds.length} 個の音を割り当てました\n`;
-            }
-        }
-
-        addon.file("sound_definitions.json", JSON.stringify(soundDefs, null, 4));
-
-        try {
-            const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(content);
-            a.download = "PF_DeepLink_Fix.mcpack"; 
-            a.click();
-            log.innerHTML += `\n>>> 【成功】全ての足音をバニラにリンクしました。`;
-        } catch (e) {
-            log.innerHTML += `\nERROR: ${e.message}`;
-        }
+        const content = await addon.generateAsync({ type: "blob", compression: "STORE" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(content);
+        a.download = "PF_Optimized.mcpack";
+        a.click();
+        log.innerHTML += ">>> 完了！容量とJSONを最適化しました。";
     }
 </script>
 </body>
