@@ -2,149 +2,135 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Java to Bedrock: 10-Year Project Lab</title>
+    <title>Java to Bedrock Converter - Phase 1.3</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --primary: #3498db; --bg: #2c3e50; --card: #34495e; --text: #ecf0f1; }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
-        .container { background: var(--card); padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 700px; width: 100%; }
-        h1 { border-bottom: 2px solid var(--primary); padding-bottom: 10px; font-size: 24px; }
-        .controls { margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap; }
-        input[type="file"] { background: #1e272e; padding: 10px; border-radius: 5px; flex-grow: 1; }
-        button { background: var(--primary); color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        button:hover { background: #2980b9; }
-        button:disabled { background: #7f8c8d; cursor: not-allowed; }
-        #status { margin: 15px 0; padding: 10px; border-radius: 5px; font-size: 14px; background: #1e272e; }
-        #output { background: #1e272e; color: #57ecad; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: 'Consolas', monospace; font-size: 13px; max-height: 300px; overflow-y: auto; border: 1px solid #485460; }
-        .success-text { color: #2ecc71; }
-        .error-text { color: #e74c3c; }
+        :root { --primary: #3498db; --bg: #1a1a2e; --card: #16213e; --text: #e94560; --white: #ffffff; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--white); padding: 40px; }
+        .container { max-width: 800px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { border-left: 5px solid var(--text); padding-left: 15px; margin-bottom: 30px; }
+        .box { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        input[type="file"] { margin-bottom: 15px; }
+        .btn-group { display: flex; gap: 10px; }
+        button { background: var(--text); color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #555; }
+        #status { margin: 20px 0; font-size: 14px; color: #aaa; }
+        #output { background: #0f3460; color: #00ffc3; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: 'Consolas', monospace; font-size: 12px; max-height: 250px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>MOD変換実験室 v1.2</h1>
-    <p>Java版Forge MODを、統合版の<code>.mcpack</code>(リソースパック)へ変換します。</p>
+    <h1>MOD変換実験室 - Texture Mapper</h1>
     
-    <div class="controls">
+    <div class="box">
         <input type="file" id="modFile" accept=".jar">
-        <button onclick="processMod()">1. 解析実行</button>
-        <button id="downloadBtn" onclick="downloadAddon()" disabled>2. ダウンロード</button>
+        <div class="btn-group">
+            <button onclick="processMod()">1. 解析 & テクスチャ抽出</button>
+            <button id="downloadBtn" onclick="downloadAddon()" disabled>2. .mcpackを保存</button>
+        </div>
     </div>
 
-    <div id="status">JARファイルを選択してください...</div>
+    <div id="status">JARファイルをアップロードしてください...</div>
     
-    <h3>生成された manifest.json</h3>
-    <div id="output">// 解析結果がここに表示されます</div>
+    <div id="output">// 解析結果のログがここに表示されます</div>
 </div>
 
 <script>
     let generatedZip = null;
     let modDisplayName = "converted_addon";
 
-    // メイン解析ロジック
     async function processMod() {
         const fileInput = document.getElementById('modFile');
         const output = document.getElementById('output');
         const status = document.getElementById('status');
         const downloadBtn = document.getElementById('downloadBtn');
 
-        if (!fileInput.files[0]) {
-            status.innerHTML = '<span class="error-text">❌ ファイルが選択されていません</span>';
-            return;
-        }
+        if (!fileInput.files[0]) return alert("ファイルを選択してください");
 
         try {
-            status.innerText = "⏳ JARを解凍中...";
-            downloadBtn.disabled = true;
+            status.innerText = "⏳ JARを解析中...";
             const javaZip = await JSZip.loadAsync(fileInput.files[0]);
-            
-            // 1. 設定ファイルの探索 (mods.toml または mcmod.info)
-            let tomlContent = "";
-            const modsToml = javaZip.file("META-INF/mods.toml") || javaZip.file(/mods\.toml$/i)[0];
-            const legacyInfo = javaZip.file("mcmod.info");
+            const addonZip = new JSZip();
+            let log = "--- 変換ログ ---\n";
 
-            let modId = "unknown";
+            // 1. mods.toml の解析
+            const tomlFile = javaZip.file(/mods\.toml$/i)[0];
+            if (!tomlFile) throw new Error("mods.tomlが見つかりません");
+            const tomlText = await tomlFile.async("string");
             
-            if (modsToml) {
-                tomlContent = await modsToml.async("string");
-                modId = tomlContent.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || "converted_mod";
-                modDisplayName = tomlContent.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || modId;
-                status.innerText = "✅ Forge 1.13+ 形式を検出しました";
-            } else if (legacyInfo) {
-                const infoText = await legacyInfo.async("string");
-                const json = JSON.parse(infoText.trim());
-                const data = Array.isArray(json) ? json[0] : (json.modList ? json.modList[0] : json);
-                modId = data.modid || "legacy_mod";
-                modName = data.name || modId;
-                status.innerText = "✅ Forge 1.12.2以前 形式を検出しました";
-            } else {
-                throw new Error("設定ファイルが見つかりません。Java版MODではない可能性があります。");
-            }
+            const modId = tomlText.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || "unknown";
+            modDisplayName = tomlText.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || modId;
+            log += `[MOD検出] ${modDisplayName} (${modId})\n`;
 
-            // 2. 統合版マニフェストの組み立て
+            // 2. manifest.json 作成
             const manifest = {
                 "format_version": 2,
                 "header": {
                     "name": modDisplayName,
-                    "description": `Converted from Java Mod: ${modId}`,
+                    "description": `Converted: ${modId}`,
                     "uuid": crypto.randomUUID(),
                     "version": [1, 0, 0],
                     "min_engine_version": [1, 21, 0]
                 },
-                "modules": [
-                    {
-                        "type": "resources",
-                        "uuid": crypto.randomUUID(),
-                        "version": [1, 0, 0]
-                    }
-                ]
+                "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1, 0, 0] }]
             };
-
-            // 3. アドオンZIP(mcpack)の構築開始
-            status.innerText = "📦 アドオンパッケージを作成中...";
-            const addonZip = new JSZip();
-            
-            // manifest.json を追加
             addonZip.file("manifest.json", JSON.stringify(manifest, null, 4));
 
-            // アイコンの抽出 (icon.png -> pack_icon.png)
-            const iconFile = javaZip.file("icon.png") || javaZip.file(/icon\.png$/i)[0];
-            if (iconFile) {
-                const iconData = await iconFile.async("blob");
-                addonZip.file("pack_icon.png", iconData);
-                status.innerText += " (アイコンも抽出完了！)";
+            // 3. テクスチャの自動マッピング
+            status.innerText = "🖼️ テクスチャを抽出・配置中...";
+            const files = javaZip.files;
+            let texCount = 0;
+
+            for (const path in files) {
+                if (path.endsWith(".png")) {
+                    const blob = await files[path].async("blob");
+                    let newPath = "";
+
+                    // アイコンの処理
+                    if (path.toLowerCase().endsWith("icon.png")) {
+                        newPath = "pack_icon.png";
+                    } 
+                    // テクスチャの振り分け
+                    else if (path.includes("/textures/item/")) {
+                        newPath = "textures/items/" + path.split('/').pop();
+                    } 
+                    else if (path.includes("/textures/block/")) {
+                        newPath = "textures/blocks/" + path.split('/').pop();
+                    } 
+                    else if (path.includes("/textures/gui/")) {
+                        newPath = "textures/gui/" + path.split('/').pop();
+                    }
+
+                    if (newPath) {
+                        addonZip.file(newPath, blob);
+                        log += `[配置] ${path} -> ${newPath}\n`;
+                        texCount++;
+                    }
+                }
             }
 
-            // 言語ファイルのテストコピー (もしあれば)
-            // 今後のフェーズで拡張しやすいように、ここにロジックを追加可能
-
+            log += `\n合計 ${texCount} 個の画像を処理しました。\n`;
             generatedZip = addonZip;
-            output.innerText = JSON.stringify(manifest, null, 4);
-            status.innerHTML = '<span class="success-text">✨ 準備完了！「ダウンロード」を押してください。</span>';
+            output.innerText = log + "\n--- manifest.json ---\n" + JSON.stringify(manifest, null, 4);
+            status.innerText = "✅ 完了！アドオンのパッケージが整いました。";
             downloadBtn.disabled = false;
 
         } catch (err) {
-            status.innerHTML = `<span class="error-text">❌ エラー: ${err.message}</span>`;
+            status.innerText = "❌ エラー: " + err.message;
             console.error(err);
         }
     }
 
-    // ダウンロード実行
     async function downloadAddon() {
         if (!generatedZip) return;
-
-        const content = await generatedZip.generateAsync({ type: "blob" });
-        const link = document.createElement("a");
-        
-        // ファイル名を安全な形に変換して .mcpack にする
-        const safeName = modDisplayName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        link.href = URL.createObjectURL(content);
-        link.download = `${safeName}.mcpack`;
-        link.click();
-        
-        URL.revokeObjectURL(link.href);
+        const blob = await generatedZip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${modDisplayName.replace(/\s+/g, '_')}.mcpack`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 </script>
 
