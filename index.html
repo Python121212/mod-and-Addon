@@ -2,30 +2,108 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MOD Converter Lab v1.1</title>
+    <title>MOD解析実験室 - AdvancementPlaques対応版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        #output { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; border: 1px solid #ccc; min-height: 50px; }
-        .error { color: #d9534f; font-weight: bold; }
-        .success { color: #5cb85c; font-weight: bold; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2c3e50; color: white; padding: 40px; }
+        .container { max-width: 800px; margin: 0 auto; background: #34495e; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        input[type="file"] { margin: 20px 0; display: block; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #2980b9; }
+        #status { margin: 20px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #27ae60; }
+        .error { background: #e74c3c; }
+        #output { background: #1e272e; color: #d1d8e0; padding: 20px; border-radius: 5px; white-space: pre-wrap; font-family: 'Consolas', monospace; overflow-x: auto; border: 1px solid #485460; }
     </style>
 </head>
 <body>
-    <h1>MOD変換実験室</h1>
-    <p>Java版MOD (.jar) を選択してください。</p>
+
+<div class="container">
+    <h1>10年計画: MOD解析プロトタイプ</h1>
+    <p>対象ファイル: <code>AdvancementPlaques-1.21.4-forge-1.6.9.jar</code></p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="processMod()">解析開始</button>
+    <button onclick="processMod()">解析を実行する</button>
 
-    <hr>
-    <div id="status">待機中...</div>
-    <h3>解析結果 (manifest.json)</h3>
-    <div id="output">ここに結果が表示されます</div>
+    <div id="status">ファイルを待機中...</div>
+    <h3>生成された manifest.json</h3>
+    <div id="output">解析後にここに表示されます</div>
+</div>
 
-    <script>
-        // ここに下のJavaScriptを貼り付けます
-    </script>
+<script>
+async function processMod() {
+    const fileInput = document.getElementById('modFile');
+    const output = document.getElementById('output');
+    const status = document.getElementById('status');
+
+    if (!fileInput.files[0]) {
+        status.className = "error";
+        status.innerText = "❌ ファイルを選択してください";
+        return;
+    }
+
+    try {
+        status.className = "";
+        status.innerText = "⏳ JARを解凍して設定ファイルを探索中...";
+        
+        const zip = await JSZip.loadAsync(fileInput.files[0]);
+        
+        // 【修正ポイント】ファイルパスを厳密に指定、または検索
+        let tomlContent = "";
+        const modsToml = zip.file("META-INF/mods.toml");
+
+        if (modsToml) {
+            tomlContent = await modsToml.async("string");
+        } else {
+            // もしパスが違った場合のために全探索
+            const found = zip.file(/mods\.toml$/i);
+            if (found.length > 0) {
+                tomlContent = await found[0].async("string");
+            }
+        }
+
+        if (!tomlContent) {
+            throw new Error("META-INF/mods.toml が見つかりませんでした。");
+        }
+
+        // --- データの抽出 ---
+        // このMOD特有の書き方に対応
+        const modId = tomlContent.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || "advancementplaques";
+        const displayName = tomlContent.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || "Advancement Plaques";
+        const version = tomlContent.match(/version\s*=\s*["']([^"']+)["']/)?.[1] || "1.6.9";
+
+        // --- 統合版形式へ変換 ---
+        const manifest = {
+            "format_version": 2,
+            "header": {
+                "name": displayName,
+                "description": `Original Java Mod ID: ${modId} (v${version})`,
+                "uuid": crypto.randomUUID(),
+                "version": [1, 0, 0],
+                "min_engine_version": [1, 21, 0]
+            },
+            "modules": [
+                {
+                    "type": "resources",
+                    "uuid": crypto.randomUUID(),
+                    "version": [1, 0, 0]
+                }
+            ]
+        };
+
+        status.className = "success";
+        status.innerText = "✅ 解析に成功しました！統合版用のマニフェストを作成しました。";
+        output.innerText = JSON.stringify(manifest, null, 4);
+
+    } catch (err) {
+        status.className = "error";
+        status.innerText = "❌ エラー: " + err.message;
+        output.innerText = "JARの中身を確認してください。mods.toml が META-INF フォルダに存在する必要があります。";
+        console.error(err);
+    }
+}
+</script>
+
 </body>
 </html>
