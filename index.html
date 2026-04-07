@@ -2,86 +2,100 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v4.1 - PF Total Override</title>
+    <title>MOD Engine v4.2 - PF Deep Link</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --pf: #8bc34a; --bg: #050505; }
-        body { background: var(--bg); color: var(--pf); font-family: 'Consolas', monospace; text-align: center; padding: 20px; }
-        .terminal { border: 2px solid var(--pf); padding: 20px; display: inline-block; border-radius: 10px; background: #111; width: 95%; max-width: 800px; }
-        button { background: var(--pf); color: #000; border: none; padding: 20px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; font-size: 1.1rem; }
-        #log { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 300px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; }
+        :root { --pf-lime: #cddc39; --bg: #000; }
+        body { background: var(--bg); color: var(--pf-lime); font-family: monospace; text-align: center; padding: 20px; }
+        .terminal { border: 3px double var(--pf-lime); padding: 25px; display: inline-block; border-radius: 10px; background: #0a0a0a; width: 95%; max-width: 800px; }
+        button { background: var(--pf-lime); color: #000; border: none; padding: 20px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; font-size: 1.2rem; box-shadow: 0 0 15px var(--pf-lime); }
+        #log { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 350px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; line-height: 1.4; }
     </style>
 </head>
 <body>
 
 <div class="terminal">
-    <h2>PF TOTAL OVERRIDE v4.1</h2>
-    <p style="font-size:11px; color:#aaa;">[Presence Footsteps 完全移植モデル]</p>
+    <h2>PF ACOUSTIC DEEP LINK v4.2</h2>
+    <p style="font-size:11px; color:#888;">[全サブフォルダ強制スキャン・足音完全乗っ取りモデル]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="pfTotalConversion()">全アセット救出 & 強制置換パック生成</button>
+    <button onclick="pfDeepLinkConversion()">足音ファイルを強制抽出して変換</button>
     
-    <div id="log">1. JARを選択してください。
-2. ボタンを押すと、全ての「足音」をバニラに上書きします。</div>
+    <div id="log">>>> 待機中... 
+Presence Footsteps の JAR を選択してボタンを押してください。</div>
 </div>
 
 <script>
-    async function pfTotalConversion() {
+    async function pfDeepLinkConversion() {
         const fileInput = document.getElementById('modFile');
         const log = document.getElementById('log');
         if (!fileInput.files[0]) return;
 
-        log.innerHTML = ">>> 変換プロセス開始...\n";
+        log.innerHTML = ">>> 深度スキャン開始...\n";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
         const manifest = {
             "format_version": 2,
-            "header": { "name": "PF_Total_Override", "uuid": crypto.randomUUID(), "version": [2,0,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "PF_Acoustic_Link_v4", "uuid": crypto.randomUUID(), "version": [4,2,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
 
         let soundDefs = { "format_version": "1.14.0", "sound_definitions": {} };
-        let soundGroups = {};
+        let categories = { "stone": [], "grass": [], "wood": [], "gravel": [], "sand": [], "water": [], "snow": [], "flesh": [] };
 
-        // 1. JAR内の全ファイルをスキャンしてグループ化
+        // 1. 全ての .ogg をスキャンし、キーワードでカテゴリ分け
         for (const path in jar.files) {
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
+                const lowerPath = path.toLowerCase();
                 
-                // 統合版での保存パスを生成
-                const safeName = path.replace(/[^a-zA-Z0-9]/g, "_");
-                const internalPath = "sounds/pf_final/" + safeName;
+                // ファイル名を識別しやすく加工
+                const cleanName = path.split('/').join('_').replace('.ogg', '');
+                const internalPath = "sounds/pf_deep/" + cleanName;
                 addon.file(internalPath + ".ogg", blob);
 
-                // 音の種類（石、草、木など）を判定
-                let type = "default";
-                if (path.includes("stone")) type = "stone";
-                else if (path.includes("grass")) type = "grass";
-                else if (path.includes("wood")) type = "wood";
-                else if (path.includes("gravel")) type = "gravel";
-                else if (path.includes("sand")) type = "sand";
-                else if (path.includes("water")) type = "water";
-
-                if (!soundGroups[type]) soundGroups[type] = [];
-                soundGroups[type].push(internalPath);
+                // カテゴリ判定 (Presence Footsteps のフォルダ構造に対応)
+                let matched = false;
+                for (let key in categories) {
+                    if (lowerPath.includes(key)) {
+                        categories[key].push(internalPath);
+                        matched = true;
+                        break;
+                    }
+                }
+                // 判定漏れは stone (デフォルト) へ
+                if (!matched) categories["stone"].push(internalPath);
                 
-                log.innerHTML += `SAVED: ${path}\n`;
+                log.innerHTML += `救出成功: ${path}\n`;
+                log.scrollTop = log.scrollHeight;
             }
         }
 
-        // 2. バニラの足音イベントに「複数の音」を紐付け
-        const vanillaEvents = ["step.stone", "step.grass", "step.wood", "step.gravel", "step.sand", "step.water"];
-        
-        for (const event of vanillaEvents) {
-            const type = event.split(".")[1];
-            if (soundGroups[type]) {
+        // 2. 統合版バニラの全足音イベントを、救出した音で上書き
+        const mapping = {
+            "step.stone": "stone",
+            "step.grass": "grass",
+            "step.wood": "wood",
+            "step.gravel": "gravel",
+            "step.sand": "sand",
+            "step.snow": "snow",
+            "step.water": "water",
+            "hit.stone": "stone",
+            "fall.stone": "stone"
+        };
+
+        for (let event in mapping) {
+            let catKey = mapping[event];
+            if (categories[catKey] && categories[catKey].length > 0) {
+                // 1つのイベントに最大15個まで音を割り当てる（マイクラの制限対策）
+                const selectedSounds = categories[catKey].slice(0, 15); 
                 soundDefs.sound_definitions[event] = {
                     "category": "player",
-                    "sounds": soundGroups[type].map(p => ({ "name": p, "volume": 1.0, "load_on_low_memory": true }))
+                    "sounds": selectedSounds.map(s => ({ "name": s, "volume": 1.0 }))
                 };
-                log.innerHTML += `MAPPED: ${event} (${soundGroups[type].length} sounds)\n`;
+                log.innerHTML += `結合完了: ${event} に ${selectedSounds.length} 個の音を割り当てました\n`;
             }
         }
 
@@ -91,9 +105,9 @@
             const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
             const a = document.createElement("a");
             a.href = URL.createObjectURL(content);
-            a.download = "PF_Final_Fix.mcpack"; 
+            a.download = "PF_DeepLink_Fix.mcpack"; 
             a.click();
-            log.innerHTML += `\n>>> 完了！PF_Final_Fix.mcpack をインポートしてください。`;
+            log.innerHTML += `\n>>> 【成功】全ての足音をバニラにリンクしました。`;
         } catch (e) {
             log.innerHTML += `\nERROR: ${e.message}`;
         }
