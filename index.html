@@ -2,141 +2,84 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v3.0 - Entity Migrator</title>
+    <title>MOD Engine v3.1 - ATOMIC FIX</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --entity-red: #ff4757; --bg: #0a0a0c; --panel: #1e1e26; }
-        body { font-family: 'Fira Code', monospace; background: var(--bg); color: #f1f2f6; padding: 20px; margin: 0; }
-        .app-container { max-width: 1000px; margin: 0 auto; background: var(--panel); border: 2px solid var(--entity-red); border-radius: 15px; padding: 25px; box-shadow: 0 0 30px rgba(255, 71, 87, 0.2); }
-        h1 { color: var(--entity-red); font-size: 1.5rem; text-align: center; text-transform: uppercase; margin-bottom: 25px; border-bottom: 1px solid #444; padding-bottom: 10px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .box { display: flex; flex-direction: column; gap: 5px; }
-        .label { font-size: 10px; color: var(--entity-red); font-weight: bold; }
-        textarea { height: 300px; background: #000; color: #ffafaf; border: 1px solid #333; padding: 12px; font-size: 11px; border-radius: 5px; resize: none; outline: none; }
-        #js-logic { color: #7bed9f; }
-        .footer { display: flex; gap: 10px; align-items: center; background: #111; padding: 20px; border-radius: 10px; }
-        button { flex: 1; padding: 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        .btn-analyze { background: var(--entity-red); color: white; }
-        .btn-download { background: #2f3542; color: #a4b0be; border: 1px solid #57606f; }
-        #status { font-size: 12px; color: #888; margin-top: 10px; }
+        body { background: #000; color: #0f0; font-family: monospace; text-align: center; padding: 50px; }
+        .emergency-box { border: 2px solid #0f0; padding: 30px; display: inline-block; border-radius: 10px; background: #111; }
+        button { background: #0f0; color: #000; border: none; padding: 20px 40px; font-weight: bold; cursor: pointer; margin-top: 20px; font-size: 18px; }
+        #log { margin-top: 20px; color: #888; font-size: 12px; }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <h1>ENTITY MIGRATION ENGINE v3.0</h1>
+<div class="emergency-box">
+    <h1>EMERGENCY REPAIR v3.1</h1>
+    <p>「有効なZIPではありません」を強制突破します</p>
     
-    <div class="grid">
-        <div class="box">
-            <span class="label">BEHAVIOR (AI & ATTRIBUTES)</span>
-            <textarea id="be-json" readonly placeholder="生成されたMobの挙動 (Behavior Pack)"></textarea>
-        </div>
-        <div class="box">
-            <span class="label">CLIENT ENTITY (RENDER & ANIM)</span>
-            <textarea id="ce-json" readonly placeholder="生成された見た目の定義 (Resource Pack)"></textarea>
-        </div>
-    </div>
-
     <input type="file" id="modFile" accept=".jar">
-    <div class="footer">
-        <button class="btn-analyze" onclick="migrateEntity()">Mob 構造解析 & 移植開始</button>
-        <button id="dlBtn" class="btn-download" disabled onclick="downloadAddon()">.MCADDON を生成</button>
-    </div>
-    <div id="status">JARファイル内の Entity クラスをスキャンして統合版 Mob へ再構成します。</div>
+    <br>
+    <button onclick="emergencyBuild()">変換 & .mcpack発行</button>
+    
+    <div id="log">JARを選択してボタンを押してください</div>
 </div>
 
 <script>
-    let finalZip = null;
-
-    async function migrateEntity() {
+    async function emergencyBuild() {
         const fileInput = document.getElementById('modFile');
-        const beOutput = document.getElementById('be-json');
-        const ceOutput = document.getElementById('ce-json');
-        const status = document.getElementById('status');
+        const log = document.getElementById('log');
+        if (!fileInput.files[0]) return alert("ファイルを選択してください");
 
-        if (!fileInput.files[0]) return;
-        status.innerText = "⏳ Javaソースコードを深層スキャン中...";
+        log.innerText = "⏳ 構築中...";
 
-        const jar = await JSZip.loadAsync(fileInput.files[0]);
-        const addon = new JSZip();
-        
-        let entityName = "custom_mob";
-        let hp = 20;
-        let speed = 0.3;
+        try {
+            const jar = await JSZip.loadAsync(fileInput.files[0]);
+            const addon = new JSZip();
+            
+            // 1. マニフェスト作成 (ここが命)
+            const manifest = {
+                "format_version": 2,
+                "header": {
+                    "name": "Emergency_Fix_" + Math.floor(Math.random() * 1000),
+                    "uuid": crypto.randomUUID(),
+                    "version": [1, 0, 0],
+                    "min_engine_version": [1, 21, 0]
+                },
+                "modules": [{
+                    "type": "resources",
+                    "uuid": crypto.randomUUID(),
+                    "version": [1, 0, 0]
+                }]
+            };
+            addon.file("manifest.json", JSON.stringify(manifest));
 
-        for (const path in jar.files) {
-            if (path.endsWith(".class") || path.endsWith(".java")) {
-                const content = await jar.files[path].async("string");
-                
-                // Javaの属性を抽出
-                if (content.includes("Attributes.MAX_HEALTH")) {
-                    const match = content.match(/MAX_HEALTH.*?(\d+)/);
-                    if (match) hp = match[1];
-                }
-                if (path.toLowerCase().includes("entity")) {
-                    entityName = path.split('/').pop().replace(".class", "").replace(".java", "").toLowerCase();
+            // 2. テクスチャを「ルート」に直接入れる (階層エラー回避)
+            for (const path in jar.files) {
+                if (path.endsWith(".png")) {
+                    const blob = await jar.files[path].async("blob");
+                    const name = path.split('/').pop().toLowerCase().replace(/[^a-z0-9.]/g, "_");
+                    addon.file(name, blob); // フォルダに入れず、バラで置く
                 }
             }
+
+            // 3. ZIP生成 (一番安全な設定)
+            const content = await addon.generateAsync({
+                type: "blob",
+                compression: "STORE", // 圧縮なし
+                mimeType: "application/octet-stream"
+            });
+
+            const url = URL.createObjectURL(content);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "Fix_" + Date.now() + ".mcpack";
+            document.body.appendChild(a);
+            a.click();
+            
+            log.innerText = "✅ 完了！このファイルで試してください。";
+        } catch (e) {
+            log.innerText = "❌ 失敗: " + e.message;
         }
-
-        // 1. Behavior Pack (挙動) の生成
-        const behavior = {
-            "format_version": "1.21.0",
-            "minecraft:entity": {
-                "description": { "identifier": `mod:${entityName}`, "is_spawnable": true, "is_summonable": true },
-                "components": {
-                    "minecraft:health": { "value": parseInt(hp), "max": parseInt(hp) },
-                    "minecraft:movement": { "value": parseFloat(speed) },
-                    "minecraft:type_family": { "family": [ "mob", "custom" ] },
-                    "minecraft:physics": { },
-                    "minecraft:navigation.walk": { "can_path_over_water": true },
-                    "minecraft:movement.basic": { },
-                    "minecraft:jump.static": { }
-                }
-            }
-        };
-
-        // 2. Client Entity (リソース) の生成
-        const clientEntity = {
-            "format_version": "1.10.0",
-            "minecraft:client_entity": {
-                "description": {
-                    "identifier": `mod:${entityName}`,
-                    "materials": { "default": "entity_alphatest" },
-                    "textures": { "default": `textures/entity/${entityName}` },
-                    "geometry": { "default": `geometry.${entityName}` },
-                    "render_controllers": [ "controller.render.default" ]
-                }
-            }
-        };
-
-        // フォルダ構造の構築
-        addon.file(`entities/${entityName}.json`, JSON.stringify(behavior, null, 4));
-        addon.file(`client_entities/${entityName}.json`, JSON.stringify(clientEntity, null, 4));
-        
-        // ダミーのマニフェスト (BP/RP統合)
-        addon.file("manifest.json", JSON.stringify({
-            "format_version": 2,
-            "header": { "name": "Entity Migrator Output", "uuid": crypto.randomUUID(), "version": [1,0,0] },
-            "modules": [
-                { "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] },
-                { "type": "data", "uuid": crypto.randomUUID(), "version": [1,0,0] }
-            ]
-        }, null, 4));
-
-        beOutput.value = JSON.stringify(behavior, null, 4);
-        ceOutput.value = JSON.stringify(clientEntity, null, 4);
-        status.innerText = `✅ 解析成功: Mob 「${entityName}」(体力:${hp}) を統合版構造へ変換。`;
-        finalZip = addon;
-        document.getElementById('dlBtn').disabled = false;
-    }
-
-    async function downloadAddon() {
-        const content = await finalZip.generateAsync({ type: "blob", compression: "STORE" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(content);
-        a.download = "Migrated_Entity_Pack.mcaddon";
-        a.click();
     }
 </script>
 </body>
