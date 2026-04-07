@@ -3,124 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MOD Engine v2.5 - Logic Transpiler Pro</title>
+    <title>MOD Engine v2.6 - 3D Geometry Transpiler</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --js-color: #f7df1e; --java-color: #ed8b00; --bg: #0d1117; --panel: #161b22; }
-        body { font-family: 'Fira Code', monospace; background: var(--bg); color: #c9d1d9; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        header { padding: 15px; background: #010409; border-bottom: 2px solid var(--js-color); display: flex; justify-content: space-between; align-items: center; }
-        .main { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; gap: 2px; background: #30363d; overflow: hidden; }
-        .editor-container { background: var(--panel); display: flex; flex-direction: column; }
-        .label { padding: 10px; font-size: 12px; background: #21262d; font-weight: bold; border-bottom: 1px solid #30363d; }
-        textarea { flex-grow: 1; background: #000; color: #88ff88; border: none; padding: 15px; font-size: 13px; resize: none; outline: none; }
-        #js-editor { color: var(--js-color); }
-        .toolbar { padding: 20px; background: #010409; display: flex; gap: 15px; align-items: center; }
-        button { padding: 12px 24px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .btn-convert { background: var(--js-color); color: #000; }
-        .btn-download { background: #238636; color: #fff; }
-        button:disabled { opacity: 0.2; cursor: not-allowed; }
+        :root { --geo-blue: #00d2ff; --bg: #050a10; --card: #1c222d; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #fff; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { padding: 15px 25px; background: #000; border-bottom: 2px solid var(--geo-blue); display: flex; justify-content: space-between; align-items: center; }
+        .main-container { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; overflow: hidden; gap: 2px; background: #333; }
+        .panel { background: var(--card); display: flex; flex-direction: column; padding: 15px; overflow: hidden; }
+        .label { font-size: 11px; color: var(--geo-blue); text-transform: uppercase; margin-bottom: 10px; font-weight: bold; }
+        textarea { flex-grow: 1; background: #000; color: #a5d6a7; border: 1px solid #333; padding: 10px; font-family: monospace; font-size: 12px; resize: none; outline: none; }
+        .controls { padding: 20px; background: #0a0f16; display: flex; gap: 15px; border-top: 1px solid #333; }
+        button { padding: 12px 25px; border-radius: 5px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-convert { background: var(--geo-blue); color: #000; }
+        .btn-save { background: #6200ea; color: #fff; }
+        button:disabled { opacity: 0.2; }
     </style>
 </head>
 <body>
 
 <header>
-    <div style="color: var(--js-color); font-weight: bold;">MOD LOGIC REBUILDER v2.5</div>
-    <div id="status" style="font-size: 12px;">Waiting for Java Source...</div>
+    <div style="font-weight: bold; letter-spacing: 1px;">3D MODEL CONVERTER v2.6</div>
+    <div id="status" style="font-size: 12px; color: #888;">Ready for .json modeling</div>
 </header>
 
-<div class="main">
-    <div class="editor-container">
-        <div class="label" style="color: var(--java-color);">JAVA SOURCE / CLASS ANALYSIS</div>
-        <textarea id="java-input" placeholder="ここにJavaのコードを貼り付けるか、JARを読み込んでください..."></textarea>
+<div class="main-container">
+    <div class="panel">
+        <div class="label">Java Edition Model (JSON)</div>
+        <textarea id="java-json" placeholder='{"parent": "block/cube", "elements": [...]} ... またはJARを読み込み'></textarea>
     </div>
-    <div class="editor-container">
-        <div class="label" style="color: var(--js-color);">BEDROCK SCRIPT API (index.js)</div>
-        <textarea id="js-editor" spellcheck="false">// 翻訳されたJavaScriptがここに生成されます</textarea>
+    <div class="panel">
+        <div class="label">Bedrock Geometry (JSON)</div>
+        <textarea id="be-json" readonly>// 変換後のジオメトリデータが表示されます</textarea>
     </div>
 </div>
 
-<div class="toolbar">
-    <input type="file" id="modFile" accept=".jar">
-    <button class="btn-convert" onclick="runTranspile()">LOGIC TRANSPILE</button>
-    <button class="btn-download" id="dlBtn" onclick="savePack()" disabled>SAVE .MCADDON</button>
+<div class="controls">
+    <input type="file" id="modFile" accept=".jar,.json">
+    <button class="btn-convert" onclick="convertGeometry()">3D GEOMETRY CONVERT</button>
+    <button class="btn-save" id="dlBtn" onclick="downloadPack()" disabled>SAVE PACK</button>
 </div>
 
 <script>
     let finalZip = null;
 
-    function transpileLogic(javaCode) {
-        let js = javaCode;
+    function javaToBedrock(javaModel) {
+        try {
+            const j = JSON.parse(javaModel);
+            const beModel = {
+                "format_version": "1.12.0",
+                "minecraft:geometry": [{
+                    "description": { "identifier": "geometry.converted_model", "texture_width": 16, "texture_height": 16, "visible_bounds_width": 1, "visible_bounds_height": 1, "visible_bounds_offset": [0, 0, 0] },
+                    "bones": [{ "name": "root", "pivot": [8, 8, 8], "cubes": [] }]
+                }]
+            };
 
-        // 1. 変数宣言の変換 (int, float, double, String -> let/const)
-        js = js.replace(/(public|private|protected|static)\s+/g, ""); // 修飾子削除
-        js = js.replace(/\b(int|float|double|long|boolean|String|var)\s+(\w+)\s*=/g, "let $2 =");
-        
-        // 2. 数値リテラルの変換 (1.0f, 20L -> 1.0, 20)
-        js = js.replace(/(\d+(\.\d+)?)f/g, "$1");
-        js = js.replace(/(\d+)L/g, "$1");
+            if (j.elements) {
+                j.elements.forEach(el => {
+                    const from = el.from; // [x, y, z]
+                    const to = el.to;
+                    // Java座標[0-16]を統合版の相対座標へ変換
+                    const size = [to[0]-from[0], to[1]-from[1], to[2]-from[2]];
+                    const origin = [from[0], from[1], from[2]];
 
-        // 3. 座標計算 (BlockPos -> Vector3)
-        // Java: new BlockPos(x, y, z) -> JS: {x: x, y: y, z: z}
-        js = js.replace(/new\s+BlockPos\((.*?),(.*?),(.*?)\)/g, "{ x: $1, y: $2, z: $3 }");
-        
-        // 4. 標準的なメソッドの置換
-        js = js.replace(/\.getX\(\)/g, ".x");
-        js = js.replace(/\.getY\(\)/g, ".y");
-        js = js.replace(/\.getZ\(\)/g, ".z");
-        js = js.replace(/System\.out\.println/g, "console.log");
-
-        // 5. Minecraft API のラップ (簡易)
-        js = js.replace(/player\.sendMessage\((.*?)\)/g, "player.sendMessage($1)");
-
-        return js;
+                    beModel["minecraft:geometry"][0].bones[0].cubes.push({
+                        "origin": origin,
+                        "size": size,
+                        "uv": [0, 0] // 簡易UV設定
+                    });
+                });
+            }
+            return JSON.stringify(beModel, null, 4);
+        } catch (e) { return "// エラー: 正しいJavaモデルJSONを読み込んでください。"; }
     }
 
-    async function runTranspile() {
+    async function convertGeometry() {
         const fileInput = document.getElementById('modFile');
-        const javaInput = document.getElementById('java-input');
-        const jsEditor = document.getElementById('js-editor');
-        const dlBtn = document.getElementById('dlBtn');
+        const javaText = document.getElementById('java-json');
+        const beText = document.getElementById('be-json');
+        
+        let targetJson = javaText.value;
 
-        let sourceCode = javaInput.value;
-
-        // JARが選択されている場合は中身を解析
         if (fileInput.files[0]) {
-            const jar = await JSZip.loadAsync(fileInput.files[0]);
-            sourceCode = "// --- JAR Analysis Results ---\n";
-            for (const path in jar.files) {
-                if (path.endsWith(".class") || path.endsWith(".java")) {
-                    const content = await jar.files[path].async("string");
-                    sourceCode += `\n// File: ${path}\n` + content.substring(0, 500); // 一部を抽出
+            const file = fileInput.files[0];
+            if (file.name.endsWith(".jar")) {
+                const jar = await JSZip.loadAsync(file);
+                // モデルファイルを探す
+                const modelFile = Object.keys(jar.files).find(p => p.includes("models/") && p.endsWith(".json"));
+                if (modelFile) {
+                    targetJson = await jar.files[modelFile].async("string");
+                    javaText.value = targetJson;
                 }
+            } else {
+                targetJson = await file.text();
+                javaText.value = targetJson;
             }
-            javaInput.value = sourceCode;
         }
 
-        // 翻訳実行
-        const result = transpileLogic(sourceCode);
-        jsEditor.value = `import { world, system } from "@minecraft/server";\n\n${result}`;
+        beText.value = javaToBedrock(targetJson);
+        document.getElementById('dlBtn').disabled = false;
         
-        // アドオンパッケージ化
+        // パック作成
         const addon = new JSZip();
         addon.file("manifest.json", JSON.stringify({
             "format_version": 2,
-            "header": { "name": "Logic Transpiled Pack", "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
-            "modules": [{ "type": "script", "language": "javascript", "uuid": crypto.randomUUID(), "version": [1,0,0], "entry": "scripts/main.js" }],
-            "dependencies": [{ "module_name": "@minecraft/server", "version": "1.10.0" }]
+            "header": { "name": "Geometry Converted", "uuid": crypto.randomUUID(), "version": [1,0,0] },
+            "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         }, null, 4));
-        addon.file("scripts/main.js", jsEditor.value);
-        
+        addon.file("models/entity/converted.geo.json", beText.value);
         finalZip = addon;
-        dlBtn.disabled = false;
-        document.getElementById('status').innerText = "TRANSPILE COMPLETE.";
     }
 
-    async function savePack() {
-        const b = await finalZip.generateAsync({type:"blob"});
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(b);
-        a.download = "Logic_Transpiled_Mod.mcaddon";
-        a.click();
+    function downloadPack() {
+        finalZip.generateAsync({type:"blob"}).then(b => {
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(b);
+            a.download = "Converted_3D_Model.mcpack";
+            a.click();
+        });
     }
 </script>
 </body>
