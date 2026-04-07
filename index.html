@@ -3,136 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MOD Engine v2.4 - Logic Transpiler</title>
+    <title>MOD Engine v2.5 - Logic Transpiler Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --js-yellow: #f7df1e; --java-orange: #ed8b00; --bg: #0f111a; --border: #2d314d; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Consolas', monospace; background: var(--bg); color: #e0e0e0; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        
-        header { padding: 15px; background: #1a1c2e; border-bottom: 2px solid var(--js-yellow); display: flex; justify-content: space-between; align-items: center; }
-        .logo { color: var(--js-yellow); font-weight: bold; font-size: 1.2rem; }
-
-        .main-layout { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; overflow: hidden; gap: 2px; background: var(--border); }
-        .panel { background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
-        .panel-header { padding: 8px 15px; background: #1a1c2e; font-size: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); }
-
-        textarea, #log { flex-grow: 1; border: none; padding: 15px; background: #050505; color: #88ff88; font-size: 13px; outline: none; resize: none; overflow-y: auto; }
-        #js-editor { color: var(--js-yellow); }
-
-        .toolbar { padding: 15px; background: #161925; border-top: 1px solid var(--border); display: flex; gap: 10px; flex-wrap: wrap; }
-        input[type="file"] { color: #fff; font-size: 12px; }
-        button { padding: 10px 20px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .btn-analyze { background: var(--js-yellow); color: #000; }
-        .btn-download { background: #4caf50; color: #fff; }
-        button:disabled { opacity: 0.3; }
-
-        @media (max-width: 800px) { .main-layout { grid-template-columns: 1fr; } }
+        :root { --js-color: #f7df1e; --java-color: #ed8b00; --bg: #0d1117; --panel: #161b22; }
+        body { font-family: 'Fira Code', monospace; background: var(--bg); color: #c9d1d9; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { padding: 15px; background: #010409; border-bottom: 2px solid var(--js-color); display: flex; justify-content: space-between; align-items: center; }
+        .main { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; gap: 2px; background: #30363d; overflow: hidden; }
+        .editor-container { background: var(--panel); display: flex; flex-direction: column; }
+        .label { padding: 10px; font-size: 12px; background: #21262d; font-weight: bold; border-bottom: 1px solid #30363d; }
+        textarea { flex-grow: 1; background: #000; color: #88ff88; border: none; padding: 15px; font-size: 13px; resize: none; outline: none; }
+        #js-editor { color: var(--js-color); }
+        .toolbar { padding: 20px; background: #010409; display: flex; gap: 15px; align-items: center; }
+        button { padding: 12px 24px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-convert { background: var(--js-color); color: #000; }
+        .btn-download { background: #238636; color: #fff; }
+        button:disabled { opacity: 0.2; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
 <header>
-    <div class="logo">JS-CORE TRANSPILER v2.4</div>
-    <div id="status" style="font-size: 12px;">Waiting for JAR...</div>
+    <div style="color: var(--js-color); font-weight: bold;">MOD LOGIC REBUILDER v2.5</div>
+    <div id="status" style="font-size: 12px;">Waiting for Java Source...</div>
 </header>
 
-<div class="main-layout">
-    <div class="panel">
-        <div class="panel-header">JAVA BYTECODE ANALYSIS<span style="color:var(--java-orange)">FORGE/FABRIC HOOKS</span></div>
-        <div id="log">>> JARファイルを読み込んで「解析」を押してください...</div>
+<div class="main">
+    <div class="editor-container">
+        <div class="label" style="color: var(--java-color);">JAVA SOURCE / CLASS ANALYSIS</div>
+        <textarea id="java-input" placeholder="ここにJavaのコードを貼り付けるか、JARを読み込んでください..."></textarea>
     </div>
-
-    <div class="panel">
-        <div class="panel-header">BEDROCK SCRIPT API (index.js)<span style="color:var(--js-yellow)">EDITABLE</span></div>
-        <textarea id="js-editor" spellcheck="false">// 生成されたコードがここに表示されます</textarea>
+    <div class="editor-container">
+        <div class="label" style="color: var(--js-color);">BEDROCK SCRIPT API (index.js)</div>
+        <textarea id="js-editor" spellcheck="false">// 翻訳されたJavaScriptがここに生成されます</textarea>
     </div>
 </div>
 
 <div class="toolbar">
     <input type="file" id="modFile" accept=".jar">
-    <button class="btn-analyze" onclick="startTranspile()">解析 & コード自動生成</button>
-    <button class="btn-download" id="dlBtn" onclick="saveAddon()" disabled>アドオンを保存</button>
+    <button class="btn-convert" onclick="runTranspile()">LOGIC TRANSPILE</button>
+    <button class="btn-download" id="dlBtn" onclick="savePack()" disabled>SAVE .MCADDON</button>
 </div>
 
 <script>
     let finalZip = null;
 
-    async function startTranspile() {
-        const fileInput = document.getElementById('modFile');
-        const log = document.getElementById('log');
-        const editor = document.getElementById('js-editor');
-        const status = document.getElementById('status');
+    function transpileLogic(javaCode) {
+        let js = javaCode;
 
-        if (!fileInput.files[0]) return;
+        // 1. 変数宣言の変換 (int, float, double, String -> let/const)
+        js = js.replace(/(public|private|protected|static)\s+/g, ""); // 修飾子削除
+        js = js.replace(/\b(int|float|double|long|boolean|String|var)\s+(\w+)\s*=/g, "let $2 =");
         
-        log.innerText = ">> 解析シーケンス開始...\n";
-        status.innerText = "ANALYZING...";
+        // 2. 数値リテラルの変換 (1.0f, 20L -> 1.0, 20)
+        js = js.replace(/(\d+(\.\d+)?)f/g, "$1");
+        js = js.replace(/(\d+)L/g, "$1");
 
-        const jar = await JSZip.loadAsync(fileInput.files[0]);
-        const addon = new JSZip();
+        // 3. 座標計算 (BlockPos -> Vector3)
+        // Java: new BlockPos(x, y, z) -> JS: {x: x, y: y, z: z}
+        js = js.replace(/new\s+BlockPos\((.*?),(.*?),(.*?)\)/g, "{ x: $1, y: $2, z: $3 }");
         
-        let scriptContent = `import { world, system } from "@minecraft/server";\n\n// --- 自動生成されたロジック ---\n\n`;
-        let foundLogic = false;
+        // 4. 標準的なメソッドの置換
+        js = js.replace(/\.getX\(\)/g, ".x");
+        js = js.replace(/\.getY\(\)/g, ".y");
+        js = js.replace(/\.getZ\(\)/g, ".z");
+        js = js.replace(/System\.out\.println/g, "console.log");
 
-        for (const path in jar.files) {
-            if (path.endsWith(".class") || path.endsWith(".java") || path.endsWith(".json")) {
-                const file = jar.files[path];
-                const content = await file.async("string");
+        // 5. Minecraft API のラップ (簡易)
+        js = js.replace(/player\.sendMessage\((.*?)\)/g, "player.sendMessage($1)");
 
-                // 1. アイテム使用イベントの抽出と変換
-                if (content.includes("onItemUse") || content.includes("useAction")) {
-                    log.innerText += `[DETECT] アイテム使用ロジック: ${path}\n`;
-                    scriptContent += `// ${path} からの変換\nworld.afterEvents.itemUse.subscribe((data) => {\n    const { itemStack, source } = data;\n    log(\`Item used: \${itemStack.typeId}\`);\n    // TODO: Java版のロジックをここに移植\n});\n\n`;
-                    foundLogic = true;
-                }
-
-                // 2. エンティティ相互作用の変換
-                if (content.includes("interact") || content.includes("onEntityInteract")) {
-                    log.innerText += `[DETECT] エンティティ相互作用: ${path}\n`;
-                    scriptContent += `world.afterEvents.entityHitEntity.subscribe((data) => {\n    const { damagingEntity, hitEntity } = data;\n    // 相互作用ロジックのプレースホルダ\n});\n\n`;
-                    foundLogic = true;
-                }
-                
-                // 3. 座標や数値の抽出（簡易スキャン）
-                const coords = content.match(/(-?\d+\.\d+f?)/g);
-                if (coords && coords.length > 2) {
-                    log.innerText += `[DATA] 座標/パラメータ候補を検出: ${coords.slice(0,3)}...\n`;
-                }
-            }
-        }
-
-        if (!foundLogic) {
-            scriptContent += "// 特徴的なロジックは検出されませんでしたが、APIの基本構造を構築しました。\n";
-            log.innerText += ">> 警告: 明確なイベントフックが見つかりませんでした。\n";
-        }
-
-        editor.value = scriptContent;
-        status.innerText = "DONE.";
-
-        // アドオンパッケージの構築
-        const manifest = {
-            "format_version": 2,
-            "header": { "name": "Converted Script Pack", "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
-            "modules": [
-                { "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] },
-                { "type": "script", "language": "javascript", "uuid": crypto.randomUUID(), "version": [1,0,0], "entry": "scripts/main.js" }
-            ],
-            "dependencies": [{ "module_name": "@minecraft/server", "version": "1.10.0" }]
-        };
-
-        addon.file("manifest.json", JSON.stringify(manifest, null, 4));
-        addon.file("scripts/main.js", editor.value);
-        
-        finalZip = addon;
-        document.getElementById('dlBtn').disabled = false;
+        return js;
     }
 
-    async function saveAddon() {
+    async function runTranspile() {
+        const fileInput = document.getElementById('modFile');
+        const javaInput = document.getElementById('java-input');
+        const jsEditor = document.getElementById('js-editor');
+        const dlBtn = document.getElementById('dlBtn');
+
+        let sourceCode = javaInput.value;
+
+        // JARが選択されている場合は中身を解析
+        if (fileInput.files[0]) {
+            const jar = await JSZip.loadAsync(fileInput.files[0]);
+            sourceCode = "// --- JAR Analysis Results ---\n";
+            for (const path in jar.files) {
+                if (path.endsWith(".class") || path.endsWith(".java")) {
+                    const content = await jar.files[path].async("string");
+                    sourceCode += `\n// File: ${path}\n` + content.substring(0, 500); // 一部を抽出
+                }
+            }
+            javaInput.value = sourceCode;
+        }
+
+        // 翻訳実行
+        const result = transpileLogic(sourceCode);
+        jsEditor.value = `import { world, system } from "@minecraft/server";\n\n${result}`;
+        
+        // アドオンパッケージ化
+        const addon = new JSZip();
+        addon.file("manifest.json", JSON.stringify({
+            "format_version": 2,
+            "header": { "name": "Logic Transpiled Pack", "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "modules": [{ "type": "script", "language": "javascript", "uuid": crypto.randomUUID(), "version": [1,0,0], "entry": "scripts/main.js" }],
+            "dependencies": [{ "module_name": "@minecraft/server", "version": "1.10.0" }]
+        }, null, 4));
+        addon.file("scripts/main.js", jsEditor.value);
+        
+        finalZip = addon;
+        dlBtn.disabled = false;
+        document.getElementById('status').innerText = "TRANSPILE COMPLETE.";
+    }
+
+    async function savePack() {
         const b = await finalZip.generateAsync({type:"blob"});
         const a = document.createElement("a");
         a.href = URL.createObjectURL(b);
-        a.download = "Rebuilt_Mod.mcaddon";
+        a.download = "Logic_Transpiled_Mod.mcaddon";
         a.click();
     }
 </script>
