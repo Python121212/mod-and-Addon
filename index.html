@@ -2,38 +2,39 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Converter v1.5 - All Texture Recovery</title>
+    <title>Universal MOD Converter v1.8</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --neon: #00f2ff; --bg: #0d1117; --card: #161b22; }
-        body { font-family: 'Courier New', monospace; background: var(--bg); color: #c9d1d9; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 10px; border: 1px solid #30363d; }
-        h1 { color: var(--neon); text-shadow: 0 0 10px var(--neon); border-bottom: 2px solid var(--neon); padding-bottom: 10px; }
-        .status-box { background: #000; padding: 15px; margin: 20px 0; border-left: 4px solid var(--neon); font-size: 14px; }
-        button { background: var(--neon); color: #000; border: none; padding: 12px 30px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px; }
+        :root { --accent: #00ff88; --bg: #0a0c10; --card: #161b22; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #c9d1d9; padding: 20px; }
+        .container { max-width: 950px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 10px; border: 1px solid #30363d; }
+        h1 { color: var(--accent); border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        .status-bar { background: #000; padding: 10px 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid var(--accent); font-family: monospace; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        button { background: var(--accent); color: #000; border: none; padding: 12px 25px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         button:disabled { background: #444; color: #888; }
-        #log { background: #000; color: #57ecad; padding: 15px; border-radius: 5px; height: 350px; overflow-y: auto; font-size: 12px; border: 1px solid #30363d; }
+        #log { background: #0d1117; color: #8b949e; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-size: 12px; border: 1px solid #30363d; line-height: 1.5; }
+        .log-hit { color: var(--accent); }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>ENGINE PHASE 1.5: TEXTURE RECOVERY</h1>
-    <div class="status-box" id="status">JARファイルを待機中...</div>
+    <h1>MOD CONVERTER <small>v1.8 Deep Scan</small></h1>
+    <div class="status-bar" id="status">あらゆるMODのテクスチャを強制抽出します。</div>
     
-    <input type="file" id="modFile" accept=".jar" style="margin-bottom: 20px;">
-    <div>
-        <button onclick="processMod()">RUN RECOVERY</button>
-        <button id="downloadBtn" onclick="downloadAddon()" disabled>DOWNLOAD MCPACK</button>
+    <div class="btn-group">
+        <input type="file" id="modFile" accept=".jar">
+        <button onclick="processMod()">ディープスキャン開始</button>
+        <button id="downloadBtn" onclick="downloadAddon()" disabled>ダウンロード</button>
     </div>
 
-    <h3 style="margin-top: 30px;">CONVERSION LOG</h3>
-    <div id="log">>> システム待機中...</div>
+    <div id="log">>> ファイルを読み込むと解析ログが表示されます...</div>
 </div>
 
 <script>
     let generatedZip = null;
-    let modDisplayName = "recovered_addon";
+    let modDisplayName = "converted_addon";
 
     async function processMod() {
         const fileInput = document.getElementById('modFile');
@@ -44,65 +45,73 @@
         if (!fileInput.files[0]) return;
         
         try {
-            status.innerText = "⏳ 復旧作業開始...";
-            log.innerText = ">> ZIPデコード開始...\n";
-            const javaZip = await JSZip.loadAsync(fileInput.files[0]);
+            status.innerText = "⏳ 徹底スキャン中...";
+            log.innerHTML = ">> <span class='log-hit'>SCAN START</span>\n";
+            
+            const rootZip = await JSZip.loadAsync(fileInput.files[0]);
             const addonZip = new JSZip();
+            let itemTex = { "resource_pack_name": "converted", "texture_name": "atlas.items", "texture_data": {} };
+            let count = 0;
 
-            // 1. 基本情報の取得
-            const tomlFile = javaZip.file(/mods\.toml$/i)[0];
-            const tomlText = await tomlFile.async("string");
-            const modId = tomlText.match(/modId\s*=\s*["']([^"']+)["']/)?.[1] || "unknown";
-            modDisplayName = tomlText.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || modId;
+            // 再帰的にZIP内をスキャンする関数（入れ子構造対策）
+            async function scanZip(zip, currentPrefix = "") {
+                const files = zip.files;
+                for (const path in files) {
+                    const file = files[path];
+                    if (file.dir) continue;
 
+                    // 1. 画像ファイル(.png)を見つけたら即座に救出
+                    if (path.endsWith(".png")) {
+                        const blob = await file.async("blob");
+                        const fileName = path.split('/').pop();
+                        let destPath = "";
+
+                        if (fileName === "icon.png" || fileName === "logo.png") {
+                            destPath = "pack_icon.png";
+                        } else {
+                            // フォルダ構造を無視して、textures/ 直下に平坦化して配置（確実に読み込ませるため）
+                            destPath = "textures/items/" + fileName;
+                            const shortName = fileName.replace(".png", "");
+                            itemTex.texture_data[shortName] = { "textures": "textures/items/" + shortName };
+                        }
+
+                        if (destPath) {
+                            addonZip.file(destPath, blob);
+                            log.innerHTML += `>> [抽出] ${path} -> ${destPath}\n`;
+                            count++;
+                        }
+                    }
+
+                    // 2. MODの名前情報を取得
+                    if (path.endsWith("mods.toml") || path.endsWith("fabric.mod.json") || path.endsWith("mcmod.info")) {
+                        const content = await file.async("string");
+                        modDisplayName = content.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || 
+                                         content.match(/"name"\s*:\s*"([^"]+)"/)?.[1] || modDisplayName;
+                        log.innerHTML += `>> <span class='log-hit'>INFO: ${modDisplayName} を検出</span>\n`;
+                    }
+                }
+            }
+
+            await scanZip(rootZip);
+
+            // manifest.json の作成
             const manifest = {
                 "format_version": 2,
                 "header": { "name": modDisplayName, "uuid": crypto.randomUUID(), "version": [1, 0, 0], "min_engine_version": [1, 21, 0] },
                 "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1, 0, 0] }]
             };
             addonZip.file("manifest.json", JSON.stringify(manifest, null, 4));
-
-            // 2. 全テクスチャ強制スキャン & 名簿作成
-            let itemTex = { "resource_pack_name": "recovered", "texture_name": "atlas.items", "texture_data": {} };
-            const files = javaZip.files;
-            let count = 0;
-
-            for (const path in files) {
-                if (path.endsWith(".png")) {
-                    const blob = await files[path].async("blob");
-                    let internalPath = "";
-
-                    const fileName = path.split('/').pop().replace(".png", "");
-
-                    if (path.toLowerCase().endsWith("icon.png")) {
-                        internalPath = "pack_icon.png";
-                    } else if (path.includes("/textures/")) {
-                        // 【修正点】Java版のパス構造を維持して textures/ 以下に配置
-                        internalPath = path.substring(path.indexOf("textures/"));
-                        
-                        // 名簿に登録（すべてをアイテムテクスチャとして認識させる）
-                        itemTex.texture_data[fileName] = { "textures": internalPath.replace(".png", "") };
-                        log.innerText += `>> 救出成功: ${internalPath}\n`;
-                        count++;
-                    }
-
-                    if (internalPath) {
-                        addonZip.file(internalPath, blob);
-                    }
-                }
-            }
-
             addonZip.file("textures/item_texture.json", JSON.stringify(itemTex, null, 4));
             
             generatedZip = addonZip;
-            log.innerText += `\n>> 完了: ${count} 個のテクスチャを統合しました。`;
-            status.innerText = "✅ 全テクスチャの復旧が完了しました。";
+            log.innerHTML += `\n>> <span class='log-hit'>完了: ${count} 個のテクスチャを救出しました。</span>\n`;
+            status.innerText = "✅ 変換完了！";
             downloadBtn.disabled = false;
             log.scrollTop = log.scrollHeight;
 
         } catch (e) {
-            status.innerText = "❌ エラー発生";
-            log.innerText += "\n[ERROR] " + e.message;
+            status.innerText = "❌ エラー";
+            log.innerHTML += `\n[ERROR] ${e.message}`;
         }
     }
 
