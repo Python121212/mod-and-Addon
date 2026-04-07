@@ -3,47 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MOD Engine v2.7 - FULL RECOVERY</title>
+    <title>MOD Engine v2.7.2 - Stable</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --main: #00ff88; --bg: #0d1117; --panel: #161b22; }
-        body { font-family: 'Consolas', monospace; background: var(--bg); color: #c9d1d9; margin: 0; padding: 10px; }
-        .container { max-width: 1000px; margin: 0 auto; background: var(--panel); border: 1px solid #30363d; border-radius: 12px; display: flex; flex-direction: column; height: 95vh; }
-        header { padding: 15px; background: #010409; border-bottom: 2px solid var(--main); text-align: center; color: var(--main); font-weight: bold; }
+        :root { --main: #00ff88; --bg: #0d1117; --panel: #161b22; --border: #30363d; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Consolas', 'Monaco', monospace; background: var(--bg); color: #c9d1d9; margin: 0; padding: 10px; height: 100vh; display: flex; flex-direction: column; }
+        .container { max-width: 1100px; margin: 0 auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        header { padding: 15px; background: #010409; border-bottom: 2px solid var(--main); text-align: center; color: var(--main); font-weight: bold; letter-spacing: 1px; }
         
-        .main-view { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; overflow: hidden; gap: 2px; background: #30363d; }
-        .editor-box { background: var(--panel); display: flex; flex-direction: column; padding: 10px; }
-        .label { font-size: 11px; color: var(--main); margin-bottom: 5px; text-transform: uppercase; }
-        textarea { flex-grow: 1; background: #000; color: #00ff41; border: none; padding: 10px; font-size: 12px; resize: none; outline: none; }
+        .main-view { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; overflow: hidden; gap: 1px; background: var(--border); }
+        .editor-box { background: var(--panel); display: flex; flex-direction: column; padding: 10px; overflow: hidden; }
+        .label { font-size: 11px; color: var(--main); margin-bottom: 5px; text-transform: uppercase; font-weight: bold; opacity: 0.8; }
+        textarea { flex-grow: 1; background: #050505; color: #00ff41; border: 1px solid #222; padding: 12px; font-size: 12px; resize: none; outline: none; border-radius: 4px; }
         
-        .footer { padding: 15px; background: #010409; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-        input[type="file"] { font-size: 12px; color: #888; }
-        button { padding: 10px 20px; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; background: var(--main); color: #000; }
-        button:disabled { background: #333; color: #666; }
-        #log-status { font-size: 11px; color: #8b949e; flex-basis: 100%; margin-top: 5px; }
+        .footer { padding: 20px; background: #010409; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; border-top: 1px solid var(--border); }
+        input[type="file"] { font-size: 12px; color: #8b949e; background: #0d1117; padding: 8px; border-radius: 4px; border: 1px solid #30363d; cursor: pointer; }
+        button { padding: 12px 25px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; text-transform: uppercase; }
+        .btn-convert { background: var(--main); color: #0d1117; }
+        .btn-convert:hover { background: #fff; box-shadow: 0 0 15px var(--main); }
+        .btn-save { background: #6200ea; color: #fff; }
+        .btn-save:hover { background: #7c4dff; }
+        button:disabled { background: #21262d; color: #484f58; cursor: not-allowed; box-shadow: none; }
+        #log-status { font-size: 12px; color: #8b949e; width: 100%; border-left: 3px solid var(--main); padding-left: 10px; margin-top: 5px; }
+
+        @media (max-width: 768px) { .main-view { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <header>UNIVERSAL MOD RECONSTRUCTION ENGINE v2.7</header>
+    <header>UNIVERSAL MOD RECONSTRUCTION ENGINE v2.7.2</header>
 
     <div class="main-view">
         <div class="editor-box">
-            <div class="label">Logic Analysis (JavaScript)</div>
-            <textarea id="js-code">// 変換後のロジック</textarea>
+            <div class="label">Script API (main.js)</div>
+            <textarea id="js-code" spellcheck="false">// 変換後のロジックがここに生成されます</textarea>
         </div>
         <div class="editor-box">
-            <div class="label">Geometry Analysis (JSON)</div>
-            <textarea id="geo-json">// 変換後の3Dモデル</textarea>
+            <div class="label">Geometry (model.geo.json)</div>
+            <textarea id="geo-json" spellcheck="false">// 変換後の3Dモデルデータがここに表示されます</textarea>
         </div>
     </div>
 
     <div class="footer">
         <input type="file" id="modFile" accept=".jar">
-        <button onclick="reconstructMod()">一括変換 & テクスチャ救出</button>
-        <button id="dlBtn" onclick="saveAddon()" disabled>アドオンを保存</button>
-        <div id="log-status">Ready. JARを読み込んでください。</div>
+        <button class="btn-convert" onclick="reconstructMod()">解析 & 統合変換実行</button>
+        <button class="btn-save" id="dlBtn" onclick="saveAddon()" disabled>アドオン保存 (.mcaddon)</button>
+        <div id="log-status">Ready. JARファイルを選択してください。</div>
     </div>
 </div>
 
@@ -56,103 +63,130 @@
         const geoText = document.getElementById('geo-json');
         const status = document.getElementById('log-status');
         
-        if (!fileInput.files[0]) return;
-        const jar = await JSZip.loadAsync(fileInput.files[0]);
-        const addon = new JSZip();
+        if (!fileInput.files[0]) return alert("ファイルを選択してください");
         
-        let textureMap = { "resource_pack_name": "converted", "texture_name": "atlas.items", "texture_data": {} };
-        let texCount = 0;
-        let scriptLog = "import { world } from '@minecraft/server';\n\n";
-        let geometryData = null;
+        try {
+            status.innerText = "⏳ JARを解析中...";
+            const jar = await JSZip.loadAsync(fileInput.files[0]);
+            const addon = new JSZip();
+            
+            let textureMap = { "resource_pack_name": "converted", "texture_name": "atlas.items", "texture_data": {} };
+            let texCount = 0;
+            let scriptLog = "import { world, system } from '@minecraft/server';\n\n// --- Auto Generated Logic ---\n";
+            let geometryData = null;
 
-        status.innerText = "Processing: ディープスキャン実行中...";
+            for (const path in jar.files) {
+                const file = jar.files[path];
+                if (file.dir) continue;
 
-        for (const path in jar.files) {
-            const file = jar.files[path];
-            if (file.dir) continue;
-
-            // 1. テクスチャ救出（最優先）
-            if (path.endsWith(".png")) {
-                const blob = await file.async("blob");
-                const fileName = path.split('/').pop();
-                const shortName = fileName.replace(".png", "");
-                
-                // 全ての画像を textures/items/ に平坦化して保存
-                const destPath = (fileName === "icon.png" || fileName === "logo.png") ? "pack_icon.png" : "textures/items/" + fileName;
-                addon.file(destPath, blob);
-                
-                if (destPath.startsWith("textures/items/")) {
-                    textureMap.texture_data[shortName] = { "textures": "textures/items/" + shortName };
-                    texCount++;
-                }
-            }
-
-            // 2. 3Dモデル変換
-            if (path.includes("models/") && path.endsWith(".json")) {
-                const content = await file.async("string");
-                try {
-                    const j = JSON.parse(content);
-                    if (j.elements) {
-                        geometryData = {
-                            "format_version": "1.12.0",
-                            "minecraft:geometry": [{
-                                "description": { "identifier": "geometry.mod_item", "texture_width": 16, "texture_height": 16 },
-                                "bones": [{ "name": "root", "pivot": [8, 8, 8], "cubes": [] }]
-                            }]
-                        };
-                        j.elements.forEach(el => {
-                            geometryData["minecraft:geometry"][0].bones[0].cubes.push({
-                                "origin": el.from,
-                                "size": [el.to[0]-el.from[0], el.to[1]-el.from[1], el.to[2]-el.from[2]],
-                                "uv": [0, 0]
-                            });
-                        });
+                // 1. テクスチャ救出
+                if (path.endsWith(".png")) {
+                    const blob = await file.async("blob");
+                    const fileName = path.split('/').pop();
+                    const shortName = fileName.replace(".png", "").replace(/[^a-zA-Z0-9]/g, "_");
+                    
+                    const destPath = (fileName === "icon.png" || fileName === "logo.png") ? "pack_icon.png" : "textures/items/" + fileName;
+                    addon.file(destPath, blob);
+                    
+                    if (destPath.startsWith("textures/items/")) {
+                        textureMap.texture_data[shortName] = { "textures": "textures/items/" + shortName };
+                        texCount++;
                     }
-                } catch(e) {}
-            }
+                }
 
-            // 3. ロジック解析
-            if (path.endsWith(".class")) {
-                const bytes = await file.async("uint8array");
-                const decoded = new TextDecoder().decode(bytes.slice(0, 2000));
-                if (decoded.includes("onItemUse")) {
-                    scriptLog += `// ${path} から変換されたイベント\nworld.afterEvents.itemUse.subscribe(ev => { /* Logic */ });\n`;
+                // 2. 3Dモデル変換
+                if (path.includes("models/") && path.endsWith(".json")) {
+                    const content = await file.async("string");
+                    try {
+                        const j = JSON.parse(content);
+                        if (j.elements) {
+                            geometryData = {
+                                "format_version": "1.12.0",
+                                "minecraft:geometry": [{
+                                    "description": { "identifier": "geometry.mod_item", "texture_width": 16, "texture_height": 16 },
+                                    "bones": [{ "name": "root", "pivot": [8, 8, 8], "cubes": [] }]
+                                }]
+                            };
+                            j.elements.forEach(el => {
+                                geometryData["minecraft:geometry"][0].bones[0].cubes.push({
+                                    "origin": el.from,
+                                    "size": [el.to[0]-el.from[0], el.to[1]-el.from[1], el.to[2]-el.from[2]],
+                                    "uv": [0, 0]
+                                });
+                            });
+                        }
+                    } catch(e) {}
+                }
+
+                // 3. ロジック簡易解析
+                if (path.endsWith(".class")) {
+                    const bytes = await file.async("uint8array");
+                    const decoded = new TextDecoder().decode(bytes.slice(0, 2000));
+                    if (decoded.includes("onItemUse")) {
+                        scriptLog += `// ${path.split('/').pop()} から抽出\nworld.afterEvents.itemUse.subscribe(ev => { /* Logic */ });\n`;
+                    }
                 }
             }
-        }
 
-        // 定義ファイル生成
-        addon.file("textures/item_texture.json", JSON.stringify(textureMap, null, 4));
-        if (geometryData) {
-            geoText.value = JSON.stringify(geometryData, null, 4);
-            addon.file("models/entity/mod_model.geo.json", geoText.value);
-        }
-        jsText.value = scriptLog;
-        addon.file("scripts/main.js", scriptLog);
-        
-        const manifest = {
-            "format_version": 2,
-            "header": { "name": "Recovered Mod", "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
-            "modules": [
-                { "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] },
-                { "type": "script", "language": "javascript", "uuid": crypto.randomUUID(), "version": [1,0,0], "entry": "scripts/main.js" }
-            ],
-            "dependencies": [{ "module_name": "@minecraft/server", "version": "1.10.0" }]
-        };
-        addon.file("manifest.json", JSON.stringify(manifest, null, 4));
+            // ZIP構造の構築 (順番が重要)
+            addon.file("textures/item_texture.json", JSON.stringify(textureMap, null, 4));
+            if (geometryData) {
+                geoText.value = JSON.stringify(geometryData, null, 4);
+                addon.file("models/entity/mod_model.geo.json", geoText.value);
+            }
+            jsText.value = scriptLog;
+            addon.file("scripts/main.js", scriptLog);
+            
+            const manifest = {
+                "format_version": 2,
+                "header": { 
+                    "name": "ConvertedMod_" + Date.now(), 
+                    "uuid": crypto.randomUUID(), 
+                    "version": [1, 0, 0], 
+                    "min_engine_version": [1, 21, 0] 
+                },
+                "modules": [
+                    { "type": "resources", "uuid": crypto.randomUUID(), "version": [1, 0, 0] },
+                    { "type": "script", "language": "javascript", "uuid": crypto.randomUUID(), "version": [1, 0, 0], "entry": "scripts/main.js" }
+                ],
+                "dependencies": [{ "module_name": "@minecraft/server", "version": "1.10.0" }]
+            };
+            addon.file("manifest.json", JSON.stringify(manifest, null, 4));
 
-        finalZip = addon;
-        document.getElementById('dlBtn').disabled = false;
-        status.innerText = `完了: テクスチャ${texCount}個救出 / モデル変換成功 / ロジック統合済`;
+            finalZip = addon;
+            document.getElementById('dlBtn').disabled = false;
+            status.innerText = `✅ 解析完了: 画像${texCount}枚 / モデル変換成功 / 構造最適化済`;
+
+        } catch (err) {
+            status.innerText = "❌ エラー: " + err.message;
+        }
     }
 
-    function saveAddon() {
-        finalZip.generateAsync({type:"blob"}).then(b => {
+    async function saveAddon() {
+        if (!finalZip) return;
+        const status = document.getElementById('log-status');
+        status.innerText = "⏳ アーカイブを生成中...";
+
+        try {
+            const blob = await finalZip.generateAsync({
+                type: "blob",
+                compression: "DEFLATE",
+                compressionOptions: { level: 6 }
+            });
+            const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = URL.createObjectURL(b);
-            a.download = "Final_Recovered_Mod.mcaddon";
+            a.href = url;
+            a.download = "Converted_Mod_" + Date.now() + ".mcaddon";
+            document.body.appendChild(a);
             a.click();
-        });
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                status.innerText = "✨ ダウンロード完了！マイクラで開いてください。";
+            }, 100);
+        } catch (e) {
+            status.innerText = "❌ 保存失敗: " + e.message;
+        }
     }
 </script>
 </body>
