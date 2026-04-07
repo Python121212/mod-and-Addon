@@ -2,14 +2,30 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Converter Test Lab</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOD Converter Lab v1.1</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        #output { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; border: 1px solid #ccc; min-height: 50px; }
+        .error { color: #d9534f; font-weight: bold; }
+        .success { color: #5cb85c; font-weight: bold; }
+    </style>
 </head>
 <body>
-    <h1>MOD変換実験室 (Phase 1: Manifest)</h1>
-    <input type="file" id="modFile" accept=".jar">
-    <button onclick="processMod()">解析・変換開始</button>
+    <h1>MOD変換実験室</h1>
+    <p>Java版MOD (.jar) を選択してください。</p>
     
-    <div id="status"></div>
-    <pre id="output"></pre> </body>
+    <input type="file" id="modFile" accept=".jar">
+    <button onclick="processMod()">解析開始</button>
+
+    <hr>
+    <div id="status">待機中...</div>
+    <h3>解析結果 (manifest.json)</h3>
+    <div id="output">ここに結果が表示されます</div>
+
+    <script>
+        // ここに下のJavaScriptを貼り付けます
+    </script>
+</body>
 </html>
