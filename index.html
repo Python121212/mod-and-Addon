@@ -2,142 +2,203 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Universal MOD Converter v1.9</title>
+    <title>10-Year Project: Universal JAR to MCADDON Engine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --accent: #bb86fc; --bg: #121212; --card: #1e1e1e; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #e0e0e0; padding: 20px; }
-        .container { max-width: 950px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
-        h1 { color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
-        .status-bar { background: #000; padding: 10px 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid var(--accent); font-family: monospace; font-size: 14px; }
-        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        button { background: var(--accent); color: #000; border: none; padding: 12px 25px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:disabled { background: #444; color: #888; }
-        #log { background: #000; color: #00ff00; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-size: 12px; border: 1px solid #333; line-height: 1.6; }
-        .log-info { color: #81d4fa; }
-        .log-success { color: #a5d6a7; }
+        :root { --neon: #00ffcc; --bg: #050505; --panel: #111; --text: #e0e0e0; }
+        body { font-family: 'Consolas', 'Monaco', monospace; background: var(--bg); color: var(--text); padding: 20px; line-height: 1.4; }
+        .container { max-width: 1100px; margin: 0 auto; background: var(--panel); border: 1px solid #333; border-radius: 8px; padding: 30px; box-shadow: 0 0 40px rgba(0,255,204,0.1); }
+        h1 { color: var(--neon); text-align: center; text-transform: uppercase; letter-spacing: 3px; border-bottom: 2px solid var(--neon); padding-bottom: 10px; }
+        .input-section { display: flex; flex-direction: column; gap: 15px; margin: 20px 0; padding: 20px; background: #1a1a1a; border-radius: 5px; }
+        .btn-group { display: flex; gap: 10px; justify-content: center; }
+        input[type="file"] { background: #000; border: 1px solid #444; padding: 10px; color: var(--neon); cursor: pointer; }
+        button { background: var(--neon); color: #000; border: none; padding: 15px 30px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #fff; box-shadow: 0 0 15px var(--neon); }
+        button:disabled { background: #333; color: #666; cursor: not-allowed; box-shadow: none; }
+        #status-display { padding: 10px; background: #000; border-left: 5px solid var(--neon); margin: 15px 0; font-size: 14px; }
+        #terminal { background: #000; color: #0f0; padding: 15px; border-radius: 4px; height: 500px; overflow-y: auto; font-size: 12px; border: 1px solid #222; }
+        .term-hit { color: var(--neon); }
+        .term-err { color: #ff4444; }
+        .term-info { color: #888; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>CONVERTER ENGINE <small>v1.9 Translation Fix</small></h1>
-    <div class="status-bar" id="status">準備完了。翻訳データの自動変換をサポートしました。</div>
-    
-    <div class="btn-group">
+    <h1>Converter Engine: Phase 2.0</h1>
+    <p style="text-align: center; color: #888;">Java Archive (JAR) 全走査 & 統合版プロトコル変換システム</p>
+
+    <div class="input-section">
         <input type="file" id="modFile" accept=".jar">
-        <button onclick="processMod()">ディープスキャン & 翻訳変換</button>
-        <button id="downloadBtn" onclick="downloadAddon()" disabled>アドオンを保存</button>
+        <div class="btn-group">
+            <button onclick="startDeepConversion()">DEEP CONVERT START</button>
+            <button id="dlBtn" onclick="downloadPackage()" disabled>DOWNLOAD .MCADDON</button>
+        </div>
     </div>
 
-    <div id="log">>> JARファイルを読み込んでください...</div>
+    <div id="status-display">System Idle...</div>
+    <div id="terminal">>> シーケンスを待機中...</div>
 </div>
 
 <script>
-    let generatedZip = null;
-    let modDisplayName = "converted_addon";
+    let finalAddonZip = null;
+    let modGlobalName = "converted_mod";
 
-    async function processMod() {
+    // ターミナル風ログ出力
+    function log(msg, type = '') {
+        const term = document.getElementById('terminal');
+        const span = document.createElement('span');
+        if (type === 'hit') span.className = 'term-hit';
+        if (type === 'err') span.className = 'term-err';
+        if (type === 'info') span.className = 'term-info';
+        span.innerText = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+        term.appendChild(span);
+        term.scrollTop = term.scrollHeight;
+    }
+
+    async function startDeepConversion() {
         const fileInput = document.getElementById('modFile');
-        const log = document.getElementById('log');
-        const status = document.getElementById('status');
-        const downloadBtn = document.getElementById('downloadBtn');
+        const status = document.getElementById('status-display');
+        const dlBtn = document.getElementById('dlBtn');
 
-        if (!fileInput.files[0]) return;
-        
+        if (!fileInput.files[0]) return alert("JARファイルを選択してください");
+
         try {
-            status.innerText = "⏳ 翻訳データとテクスチャを解析中...";
-            log.innerHTML = ">> <span class='log-success'>解析開始</span>\n";
+            status.innerText = "RUNNING: DEEP ANALYSIS...";
+            log(">> プロセス開始: " + fileInput.files[0].name, 'hit');
             
-            const rootZip = await JSZip.loadAsync(fileInput.files[0]);
-            const addonZip = new JSZip();
-            let itemTex = { "resource_pack_name": "converted", "texture_name": "atlas.items", "texture_data": {} };
-            let translationEntries = [];
+            const javaZip = await JSZip.loadAsync(fileInput.files[0]);
+            const addon = new JSZip(); // 最終的な .mcaddon (RP+BP)
+            
+            let modId = "mod_converted";
+            let displayName = "Converted Mod";
+            let texturesCount = 0;
+            let langCount = 0;
+            let itemCount = 0;
 
-            const files = rootZip.files;
-            let fileCount = 0;
+            // 1. メタデータ徹底解析 (Forge / Fabric / Legacy)
+            log(">> メタデータの全走査を開始...");
+            for (const path in javaZip.files) {
+                if (path.match(/mods\.toml$|fabric\.mod\.json$|mcmod\.info$/)) {
+                    const content = await javaZip.files[path].async("string");
+                    log(">> 構成ファイルを検出: " + path, 'hit');
+                    
+                    // TOML / JSON 解析
+                    modId = content.match(/modId\s*=\s*["']([^"']+)["']/) ? content.match(/modId\s*=\s*["']([^"']+)["']/)[1] : modId;
+                    displayName = content.match(/displayName\s*=\s*["']([^"']+)["']/) ? content.match(/displayName\s*=\s*["']([^"']+)["']/)[1] : displayName;
+                    
+                    if (path.endsWith('.json')) {
+                        try {
+                            const j = JSON.parse(content);
+                            modId = j.id || j.modid || modId;
+                            displayName = j.name || displayName;
+                        } catch(e) {}
+                    }
+                }
+            }
+            modGlobalName = displayName;
+            log(`>> モジュール名確定: ${displayName} (ID: ${modId})`, 'hit');
 
-            for (const path in files) {
-                const file = files[path];
+            // 2. 統合版ファイル構造の構築
+            log(">> 統合版ファイルシステムを構築中...");
+            const rpUUID = crypto.randomUUID();
+            const bpUUID = crypto.randomUUID();
+            
+            // manifest.json (リソースパック)
+            const rpManifest = {
+                "format_version": 2,
+                "header": { "name": `${displayName} RP`, "description": "Converted Resource Pack", "uuid": rpUUID, "version": [1,0,0], "min_engine_version": [1,21,0] },
+                "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
+            };
+            
+            // 3. 全ファイル走査 & コンテンツ変換
+            let itemTextureMap = { "resource_pack_name": "converted", "texture_name": "atlas.items", "texture_data": {} };
+            let langEntries = [];
+
+            for (const path in javaZip.files) {
+                const file = javaZip.files[path];
                 if (file.dir) continue;
 
-                // 1. テクスチャ救出（前回の最強ロジック継続）
+                // A. テクスチャ救出 & 平坦化
                 if (path.endsWith(".png")) {
                     const blob = await file.async("blob");
                     const fileName = path.split('/').pop();
-                    let destPath = "";
+                    const cleanName = fileName.replace(".png", "");
 
+                    let destPath = "";
                     if (fileName === "icon.png" || fileName === "logo.png") {
                         destPath = "pack_icon.png";
                     } else if (path.includes("/textures/")) {
-                        destPath = "textures/items/" + fileName;
-                        const shortName = fileName.replace(".png", "");
-                        itemTex.texture_data[shortName] = { "textures": "textures/items/" + shortName };
+                        // 構造維持コピー
+                        destPath = path.substring(path.indexOf("textures/"));
+                        
+                        // アイテム登録
+                        if (path.includes("/item/")) {
+                            itemTextureMap.texture_data[cleanName] = { "textures": destPath.replace(".png", "") };
+                            
+                            // BP: アイテム定義生成
+                            const itemBP = {
+                                "format_version": "1.21.0",
+                                "minecraft:item": {
+                                    "description": { "identifier": `${modId}:${cleanName}` },
+                                    "components": {
+                                        "minecraft:icon": cleanName,
+                                        "minecraft:display_name": { "value": cleanName },
+                                        "minecraft:max_stack_size": 64
+                                    }
+                                }
+                            };
+                            addon.file(`items/${cleanName}.item.json`, JSON.stringify(itemBP, null, 4));
+                            itemCount++;
+                        }
                     }
-
                     if (destPath) {
-                        addonZip.file(destPath, blob);
-                        fileCount++;
+                        addon.file(destPath, blob);
+                        texturesCount++;
                     }
                 }
 
-                // 2. 【新機能】翻訳ファイルの変換 (json -> lang)
+                // B. 翻訳ファイルの全自動変換
                 if (path.endsWith(".json") && path.includes("/lang/")) {
-                    log.innerHTML += `>> <span class='log-info'>翻訳ファイルを検出: ${path}</span>\n`;
                     try {
                         const content = await file.async("string");
-                        const langData = JSON.parse(content);
-                        
-                        for (const key in langData) {
-                            // Java版のキー（item.modid.name）を統合版形式へ
-                            translationEntries.push(`${key}=${langData[key]}`);
+                        const json = JSON.parse(content);
+                        for (const key in json) {
+                            langEntries.push(`${key}=${json[key]}`);
+                            langCount++;
                         }
-                    } catch(e) { log.innerHTML += `>> 警告: 翻訳ファイルの解析に失敗しました (${path})\n`; }
-                }
-
-                // 3. メタデータからMOD名取得
-                if (path.endsWith("mods.toml") || path.endsWith("fabric.mod.json")) {
-                    const content = await file.async("string");
-                    modDisplayName = content.match(/displayName\s*=\s*["']([^"']+)["']/)?.[1] || 
-                                     content.match(/"name"\s*:\s*"([^"]+)"/)?.[1] || modDisplayName;
+                    } catch(e) { log(">> 翻訳エラー: " + path, 'err'); }
                 }
             }
 
-            // 統合版用翻訳ファイルの書き出し
-            if (translationEntries.length > 0) {
-                const langContent = translationEntries.join("\n");
-                addonZip.file("texts/en_US.lang", langContent);
-                addonZip.file("texts/ja_JP.lang", langContent); // 日本語環境でも表示されるようコピー
-                log.innerHTML += `>> <span class='log-success'>翻訳データを ${translationEntries.length} 件変換しました。</span>\n`;
+            // 4. 定義ファイルの書き出し
+            addon.file("manifest.json", JSON.stringify(rpManifest, null, 4));
+            addon.file("textures/item_texture.json", JSON.stringify(itemTextureMap, null, 4));
+            if (langEntries.length > 0) {
+                const langStr = langEntries.join("\n");
+                addon.file("texts/en_US.lang", langStr);
+                addon.file("texts/ja_JP.lang", langStr);
             }
 
-            // 必須設定ファイルの作成
-            const manifest = {
-                "format_version": 2,
-                "header": { "name": modDisplayName, "uuid": crypto.randomUUID(), "version": [1, 0, 0], "min_engine_version": [1, 21, 0] },
-                "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1, 0, 0] }]
-            };
-            addonZip.file("manifest.json", JSON.stringify(manifest, null, 4));
-            addonZip.file("textures/item_texture.json", JSON.stringify(itemTex, null, 4));
-            
-            generatedZip = addonZip;
-            status.innerText = "✅ 翻訳とテクスチャの統合が完了しました。";
-            downloadBtn.disabled = false;
-            log.scrollTop = log.scrollHeight;
+            log(`>> 走査完了: テクスチャx${texturesCount}, 翻訳x${langCount}, アイテム定義x${itemCount}`, 'hit');
+            finalAddonZip = addon;
+            status.innerText = "COMPLETE: DATA RECONSTRUCTED.";
+            dlBtn.disabled = false;
 
         } catch (e) {
-            status.innerText = "❌ エラー";
-            log.innerHTML += `\n[ERROR] ${e.message}`;
+            log(">> 致命的エラー: " + e.message, 'err');
+            status.innerText = "ERROR DETECTED.";
         }
     }
 
-    async function downloadAddon() {
-        const b = await generatedZip.generateAsync({type:"blob"});
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(b);
-        a.download = `${modDisplayName.replace(/\s+/g, '_')}.mcpack`;
-        a.click();
+    async function downloadPackage() {
+        const blob = await finalAddonZip.generateAsync({type:"blob"});
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${modGlobalName.replace(/\s+/g, '_')}.mcpack`;
+        link.click();
     }
 </script>
+
 </body>
 </html>
