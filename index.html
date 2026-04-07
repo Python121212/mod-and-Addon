@@ -2,40 +2,39 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v4.4 - JSON Optimizer</title>
+    <title>PF JSON REBUILDER v4.5</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; text-align: center; padding: 20px; }
-        .terminal { border: 2px solid #0f0; padding: 20px; display: inline-block; background: #050505; width: 90%; }
-        button { background: #0f0; color: #000; border: none; padding: 15px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; }
-        #log { margin-top: 10px; color: #888; font-size: 10px; text-align: left; height: 200px; overflow-y: auto; border: 1px solid #333; padding: 5px; }
+        body { background: #000; color: #00ff00; font-family: 'Courier New', monospace; text-align: center; }
+        .container { border: 2px solid #00ff00; padding: 20px; margin: 20px auto; width: 80%; background: #111; }
+        button { background: #00ff00; color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; width: 100%; }
+        #console { text-align: left; background: #000; padding: 10px; height: 200px; overflow-y: scroll; font-size: 12px; border: 1px solid #333; margin-top: 10px; }
     </style>
 </head>
 <body>
-<div class="terminal">
-    <h2>JSON OPTIMIZER v4.4</h2>
+<div class="container">
+    <h2>PF JSON REBUILDER v4.5</h2>
+    <p>足りない定義を自動生成し、パスを最短化します。</p>
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="optimizeBuild()">軽量化ビルド実行</button>
-    <div id="log">>>> 待機中...</div>
+    <button onclick="rebuildJSON()">定義ファイル完全再構築</button>
+    <div id="console">>>> ログ待機中...</div>
 </div>
 
 <script>
-    async function optimizeBuild() {
+    async function rebuildJSON() {
         const fileInput = document.getElementById('modFile');
-        const log = document.getElementById('log');
+        const consoleLog = document.getElementById('console');
         if (!fileInput.files[0]) return;
 
-        log.innerHTML = ">>> JSON最適化中...\n";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
         // 最小構成マニフェスト
-        const manifest = {
+        addon.file("manifest.json", JSON.stringify({
             "format_version": 2,
-            "header": { "name": "PF_Optimized", "uuid": crypto.randomUUID(), "version": [4,4,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "PF_Rebuilt_v45", "uuid": crypto.randomUUID(), "version": [4,5,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
-        };
-        addon.file("manifest.json", JSON.stringify(manifest));
+        }));
 
         let soundDefs = { "format_version": "1.14.0", "sound_definitions": {} };
         const categories = ["stone", "grass", "wood", "gravel", "sand", "snow", "water"];
@@ -43,37 +42,37 @@
         for (const path in jar.files) {
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
-                const lowerPath = path.toLowerCase();
                 
-                // パスを極限まで短縮
-                const shortId = Math.random().toString(36).substring(7);
-                const internalPath = `s/${shortId}`; 
-                addon.file(`${internalPath}.ogg`, blob);
+                // 1. パスの最適化 (sounds/ フォルダ直下に短い名前で配置)
+                const soundId = Math.random().toString(36).substring(7);
+                const shortPath = `s/${soundId}`; 
+                addon.file(`sounds/${shortPath}.ogg`, blob); // 物理ファイル
 
-                // カテゴリ判定
-                let cat = categories.find(c => lowerPath.includes(c)) || "stone";
+                // 2. カテゴリ判定
+                let cat = categories.find(c => path.toLowerCase().includes(c)) || "stone";
                 let event = `step.${cat}`;
 
                 if (!soundDefs.sound_definitions[event]) {
                     soundDefs.sound_definitions[event] = { "category": "player", "sounds": [] };
                 }
-                
-                // 重複を避けつつ登録
-                if (soundDefs.sound_definitions[event].sounds.length < 20) {
-                    soundDefs.sound_definitions[event].sounds.push(internalPath); // 文字列のみで記述（軽量化）
+
+                // 3. JSON記述の最適化 (nameのみの文字列配列にする)
+                if (soundDefs.sound_definitions[event].sounds.length < 15) {
+                    soundDefs.sound_definitions[event].sounds.push(shortPath);
                 }
+                consoleLog.innerHTML += `Mapping: ${path} -> ${event}\n`;
             }
         }
 
-        // 改行や空白を入れずにJSONを出力
+        // 4. 空白を一切入れない Minify JSON
         addon.file("sound_definitions.json", JSON.stringify(soundDefs));
 
         const content = await addon.generateAsync({ type: "blob", compression: "STORE" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(content);
-        a.download = "PF_Optimized.mcpack";
+        a.download = "PF_Rebuilt.mcpack";
         a.click();
-        log.innerHTML += ">>> 完了！容量とJSONを最適化しました。";
+        consoleLog.innerHTML += "\n>>> 再構築完了！余計な余白を削除し、パスを修正しました。";
     }
 </script>
 </body>
