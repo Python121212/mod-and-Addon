@@ -3,189 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MOD Engine v2.7.2 - Stable</title>
+    <title>MOD Engine v2.7.3 - Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --main: #00ff88; --bg: #0d1117; --panel: #161b22; --border: #30363d; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Consolas', 'Monaco', monospace; background: var(--bg); color: #c9d1d9; margin: 0; padding: 10px; height: 100vh; display: flex; flex-direction: column; }
-        .container { max-width: 1100px; margin: 0 auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        header { padding: 15px; background: #010409; border-bottom: 2px solid var(--main); text-align: center; color: var(--main); font-weight: bold; letter-spacing: 1px; }
-        
-        .main-view { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; overflow: hidden; gap: 1px; background: var(--border); }
-        .editor-box { background: var(--panel); display: flex; flex-direction: column; padding: 10px; overflow: hidden; }
-        .label { font-size: 11px; color: var(--main); margin-bottom: 5px; text-transform: uppercase; font-weight: bold; opacity: 0.8; }
-        textarea { flex-grow: 1; background: #050505; color: #00ff41; border: 1px solid #222; padding: 12px; font-size: 12px; resize: none; outline: none; border-radius: 4px; }
-        
-        .footer { padding: 20px; background: #010409; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; border-top: 1px solid var(--border); }
-        input[type="file"] { font-size: 12px; color: #8b949e; background: #0d1117; padding: 8px; border-radius: 4px; border: 1px solid #30363d; cursor: pointer; }
-        button { padding: 12px 25px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; text-transform: uppercase; }
-        .btn-convert { background: var(--main); color: #0d1117; }
-        .btn-convert:hover { background: #fff; box-shadow: 0 0 15px var(--main); }
-        .btn-save { background: #6200ea; color: #fff; }
-        .btn-save:hover { background: #7c4dff; }
-        button:disabled { background: #21262d; color: #484f58; cursor: not-allowed; box-shadow: none; }
-        #log-status { font-size: 12px; color: #8b949e; width: 100%; border-left: 3px solid var(--main); padding-left: 10px; margin-top: 5px; }
-
-        @media (max-width: 768px) { .main-view { grid-template-columns: 1fr; } }
+        :root { --main: #ff007b; --bg: #0d1117; }
+        body { font-family: sans-serif; background: var(--bg); color: #fff; padding: 20px; text-align: center; }
+        .box { max-width: 600px; margin: 0 auto; background: #161b22; padding: 30px; border-radius: 15px; border: 2px solid var(--main); }
+        button { background: var(--main); color: white; border: none; padding: 15px 30px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 20px; width: 100%; }
+        button:disabled { background: #333; }
+        #status { margin-top: 20px; font-size: 14px; color: #8b949e; }
+        input { margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <header>UNIVERSAL MOD RECONSTRUCTION ENGINE v2.7.2</header>
-
-    <div class="main-view">
-        <div class="editor-box">
-            <div class="label">Script API (main.js)</div>
-            <textarea id="js-code" spellcheck="false">// 変換後のロジックがここに生成されます</textarea>
-        </div>
-        <div class="editor-box">
-            <div class="label">Geometry (model.geo.json)</div>
-            <textarea id="geo-json" spellcheck="false">// 変換後の3Dモデルデータがここに表示されます</textarea>
-        </div>
-    </div>
-
-    <div class="footer">
-        <input type="file" id="modFile" accept=".jar">
-        <button class="btn-convert" onclick="reconstructMod()">解析 & 統合変換実行</button>
-        <button class="btn-save" id="dlBtn" onclick="saveAddon()" disabled>アドオン保存 (.mcaddon)</button>
-        <div id="log-status">Ready. JARファイルを選択してください。</div>
-    </div>
+<div class="box">
+    <h2 style="color:var(--main)">MOD FIX ENGINE v2.7.3</h2>
+    <p style="font-size: 12px;">「有効なZIPではありません」回避モデル</p>
+    
+    <input type="file" id="modFile" accept=".jar">
+    <button id="runBtn" onclick="reconstruct()">変換 & ダウンロード</button>
+    <div id="status">JARファイルを選択してください</div>
 </div>
 
 <script>
-    let finalZip = null;
-
-    async function reconstructMod() {
+    async function reconstruct() {
         const fileInput = document.getElementById('modFile');
-        const jsText = document.getElementById('js-code');
-        const geoText = document.getElementById('geo-json');
-        const status = document.getElementById('log-status');
+        const status = document.getElementById('status');
+        const runBtn = document.getElementById('runBtn');
+
+        if (!fileInput.files[0]) return alert("ファイルを選んでください");
         
-        if (!fileInput.files[0]) return alert("ファイルを選択してください");
-        
+        runBtn.disabled = true;
+        status.innerText = "⏳ 変換中...";
+
         try {
-            status.innerText = "⏳ JARを解析中...";
             const jar = await JSZip.loadAsync(fileInput.files[0]);
             const addon = new JSZip();
             
-            let textureMap = { "resource_pack_name": "converted", "texture_name": "atlas.items", "texture_data": {} };
             let texCount = 0;
-            let scriptLog = "import { world, system } from '@minecraft/server';\n\n// --- Auto Generated Logic ---\n";
-            let geometryData = null;
+            let textureData = {};
 
+            // 1. テクスチャのみを抽出 (一番安全なルート)
             for (const path in jar.files) {
-                const file = jar.files[path];
-                if (file.dir) continue;
-
-                // 1. テクスチャ救出
-                if (path.endsWith(".png")) {
-                    const blob = await file.async("blob");
-                    const fileName = path.split('/').pop();
-                    const shortName = fileName.replace(".png", "").replace(/[^a-zA-Z0-9]/g, "_");
+                if (path.endsWith(".png") && !path.includes("META-INF")) {
+                    const blob = await jar.files[path].async("blob");
+                    const fileName = path.split('/').pop().toLowerCase().replace(/[^a-z0-9.]/g, "_");
                     
-                    const destPath = (fileName === "icon.png" || fileName === "logo.png") ? "pack_icon.png" : "textures/items/" + fileName;
-                    addon.file(destPath, blob);
-                    
-                    if (destPath.startsWith("textures/items/")) {
-                        textureMap.texture_data[shortName] = { "textures": "textures/items/" + shortName };
-                        texCount++;
-                    }
-                }
-
-                // 2. 3Dモデル変換
-                if (path.includes("models/") && path.endsWith(".json")) {
-                    const content = await file.async("string");
-                    try {
-                        const j = JSON.parse(content);
-                        if (j.elements) {
-                            geometryData = {
-                                "format_version": "1.12.0",
-                                "minecraft:geometry": [{
-                                    "description": { "identifier": "geometry.mod_item", "texture_width": 16, "texture_height": 16 },
-                                    "bones": [{ "name": "root", "pivot": [8, 8, 8], "cubes": [] }]
-                                }]
-                            };
-                            j.elements.forEach(el => {
-                                geometryData["minecraft:geometry"][0].bones[0].cubes.push({
-                                    "origin": el.from,
-                                    "size": [el.to[0]-el.from[0], el.to[1]-el.from[1], el.to[2]-el.from[2]],
-                                    "uv": [0, 0]
-                                });
-                            });
-                        }
-                    } catch(e) {}
-                }
-
-                // 3. ロジック簡易解析
-                if (path.endsWith(".class")) {
-                    const bytes = await file.async("uint8array");
-                    const decoded = new TextDecoder().decode(bytes.slice(0, 2000));
-                    if (decoded.includes("onItemUse")) {
-                        scriptLog += `// ${path.split('/').pop()} から抽出\nworld.afterEvents.itemUse.subscribe(ev => { /* Logic */ });\n`;
-                    }
+                    // 確実に認識させるためルート直下のtexturesフォルダへ
+                    addon.file("textures/items/" + fileName, blob);
+                    textureData[fileName.replace(".png", "")] = { "textures": "textures/items/" + fileName.replace(".png", "") };
+                    texCount++;
                 }
             }
 
-            // ZIP構造の構築 (順番が重要)
-            addon.file("textures/item_texture.json", JSON.stringify(textureMap, null, 4));
-            if (geometryData) {
-                geoText.value = JSON.stringify(geometryData, null, 4);
-                addon.file("models/entity/mod_model.geo.json", geoText.value);
-            }
-            jsText.value = scriptLog;
-            addon.file("scripts/main.js", scriptLog);
-            
+            // 2. 必須ファイルの作成 (リソースパック形式に固定)
             const manifest = {
                 "format_version": 2,
-                "header": { 
-                    "name": "ConvertedMod_" + Date.now(), 
-                    "uuid": crypto.randomUUID(), 
-                    "version": [1, 0, 0], 
-                    "min_engine_version": [1, 21, 0] 
+                "header": {
+                    "name": "Fixed_Mod_" + Date.now(),
+                    "description": "Converted by Gemini Engine",
+                    "uuid": crypto.randomUUID(),
+                    "version": [1, 0, 0],
+                    "min_engine_version": [1, 21, 0]
                 },
                 "modules": [
-                    { "type": "resources", "uuid": crypto.randomUUID(), "version": [1, 0, 0] },
-                    { "type": "script", "language": "javascript", "uuid": crypto.randomUUID(), "version": [1, 0, 0], "entry": "scripts/main.js" }
-                ],
-                "dependencies": [{ "module_name": "@minecraft/server", "version": "1.10.0" }]
+                    {
+                        "type": "resources",
+                        "uuid": crypto.randomUUID(),
+                        "version": [1, 0, 0]
+                    }
+                ]
             };
+
+            // フォルダ階層を作らず、ルートに直接配置
             addon.file("manifest.json", JSON.stringify(manifest, null, 4));
+            addon.file("textures/item_texture.json", JSON.stringify({ "resource_pack_name": "pack", "texture_name": "atlas.items", "texture_data": textureData }, null, 4));
 
-            finalZip = addon;
-            document.getElementById('dlBtn').disabled = false;
-            status.innerText = `✅ 解析完了: 画像${texCount}枚 / モデル変換成功 / 構造最適化済`;
+            status.innerText = "⏳ ZIPパッケージ生成中...";
 
-        } catch (err) {
-            status.innerText = "❌ エラー: " + err.message;
-        }
-    }
-
-    async function saveAddon() {
-        if (!finalZip) return;
-        const status = document.getElementById('log-status');
-        status.innerText = "⏳ アーカイブを生成中...";
-
-        try {
-            const blob = await finalZip.generateAsync({
+            // 3. 互換性重視のZIP生成 (圧縮レベル0 = Store)
+            const content = await addon.generateAsync({
                 type: "blob",
-                compression: "DEFLATE",
-                compressionOptions: { level: 6 }
+                mimeType: "application/octet-stream",
+                compression: "STORE" // 圧縮しないことで破損判定を回避
             });
-            const url = URL.createObjectURL(blob);
+
+            const url = URL.createObjectURL(content);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "Converted_Mod_" + Date.now() + ".mcaddon";
+            a.download = "Fixed_Mod.mcpack"; // .mcpackに変更
             document.body.appendChild(a);
             a.click();
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                status.innerText = "✨ ダウンロード完了！マイクラで開いてください。";
-            }, 100);
+            
+            status.innerText = `✅ 成功！画像 ${texCount} 枚を救出。\nFixed_Mod.mcpack を開いてください。`;
+
         } catch (e) {
-            status.innerText = "❌ 保存失敗: " + e.message;
+            status.innerText = "❌ エラー: " + e.message;
+            console.error(e);
+        } finally {
+            runBtn.disabled = false;
         }
     }
 </script>
