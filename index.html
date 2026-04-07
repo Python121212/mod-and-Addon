@@ -2,94 +2,98 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v4.0 - Presence Footsteps Fix</title>
+    <title>MOD Engine v4.1 - PF Total Override</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --pf-green: #4caf50; --bg: #0d0d0d; }
-        body { background: var(--bg); color: var(--pf-green); font-family: 'Consolas', monospace; text-align: center; padding: 20px; }
-        .panel { border: 2px solid var(--pf-green); padding: 25px; display: inline-block; border-radius: 15px; background: #1a1a1a; width: 90%; max-width: 700px; box-shadow: 0 0 20px rgba(76, 175, 80, 0.4); }
-        button { background: var(--pf-green); color: #000; border: none; padding: 15px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; text-transform: uppercase; }
-        #log { margin-top: 15px; color: #fff; font-size: 11px; text-align: left; height: 250px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; }
+        :root { --pf: #8bc34a; --bg: #050505; }
+        body { background: var(--bg); color: var(--pf); font-family: 'Consolas', monospace; text-align: center; padding: 20px; }
+        .terminal { border: 2px solid var(--pf); padding: 20px; display: inline-block; border-radius: 10px; background: #111; width: 95%; max-width: 800px; }
+        button { background: var(--pf); color: #000; border: none; padding: 20px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; font-size: 1.1rem; }
+        #log { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 300px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
-<div class="panel">
-    <h2>PRESENCE FOOTSTEPS CONVERTER v4.0</h2>
-    <p style="font-size:11px; color:#aaa;">[Presence Footsteps 構造解析モデル]</p>
+<div class="terminal">
+    <h2>PF TOTAL OVERRIDE v4.1</h2>
+    <p style="font-size:11px; color:#aaa;">[Presence Footsteps 完全移植モデル]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="convertPresenceFootsteps()">MOD独自の音響定義を統合版へ移植</button>
+    <button onclick="pfTotalConversion()">全アセット救出 & 強制置換パック生成</button>
     
-    <div id="log">READY: Presence Footsteps の JAR を選択してください...</div>
+    <div id="log">1. JARを選択してください。
+2. ボタンを押すと、全ての「足音」をバニラに上書きします。</div>
 </div>
 
 <script>
-    async function convertPresenceFootsteps() {
+    async function pfTotalConversion() {
         const fileInput = document.getElementById('modFile');
         const log = document.getElementById('log');
         if (!fileInput.files[0]) return;
 
-        log.innerHTML = ">>> Presence Footsteps 深層解析開始...\n";
+        log.innerHTML = ">>> 変換プロセス開始...\n";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
         const manifest = {
             "format_version": 2,
-            "header": { "name": "PF_Sound_Restoration", "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "PF_Total_Override", "uuid": crypto.randomUUID(), "version": [2,0,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
 
         let soundDefs = { "format_version": "1.14.0", "sound_definitions": {} };
-        let count = 0;
+        let soundGroups = {};
 
-        // 1. 全ての .ogg を救出し、正規のパスへ再配置
+        // 1. JAR内の全ファイルをスキャンしてグループ化
         for (const path in jar.files) {
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
                 
-                // Presence Footsteps の複雑なパスを単純化
-                // 例: assets/presencefootsteps/sounds/stone/step1.ogg -> sounds/pf/stone_step1.ogg
-                const fileName = path.split('/').pop().replace(".ogg", "");
-                const folderName = path.split('/').slice(-2, -1)[0];
-                const internalPath = `sounds/pf/${folderName}_${fileName}`;
-                
+                // 統合版での保存パスを生成
+                const safeName = path.replace(/[^a-zA-Z0-9]/g, "_");
+                const internalPath = "sounds/pf_final/" + safeName;
                 addon.file(internalPath + ".ogg", blob);
 
-                // 全ての音を個別のサウンドイベントとして登録
-                const eventName = `pf.${folderName}.${fileName}`;
-                soundDefs.sound_definitions[eventName] = {
-                    "category": "player",
-                    "sounds": [{ "name": internalPath, "stream": false, "volume": 1.0 }]
-                };
+                // 音の種類（石、草、木など）を判定
+                let type = "default";
+                if (path.includes("stone")) type = "stone";
+                else if (path.includes("grass")) type = "grass";
+                else if (path.includes("wood")) type = "wood";
+                else if (path.includes("gravel")) type = "gravel";
+                else if (path.includes("sand")) type = "sand";
+                else if (path.includes("water")) type = "water";
 
-                // バニラの足音をこのMODの「stone」や「grass」系の音で強制上書き
-                if (path.includes("stone") && (path.includes("step") || path.includes("walk"))) {
-                    soundDefs.sound_definitions["step.stone"] = soundDefs.sound_definitions[eventName];
-                }
-                if (path.includes("grass") && (path.includes("step") || path.includes("walk"))) {
-                    soundDefs.sound_definitions["step.grass"] = soundDefs.sound_definitions[eventName];
-                }
-                if (path.includes("wood") && (path.includes("step") || path.includes("walk"))) {
-                    soundDefs.sound_definitions["step.wood"] = soundDefs.sound_definitions[eventName];
-                }
-
-                count++;
-                log.innerHTML += `CONVERTED: ${path} -> ${eventName}\n`;
-                log.scrollTop = log.scrollHeight;
+                if (!soundGroups[type]) soundGroups[type] = [];
+                soundGroups[type].push(internalPath);
+                
+                log.innerHTML += `SAVED: ${path}\n`;
             }
         }
+
+        // 2. バニラの足音イベントに「複数の音」を紐付け
+        const vanillaEvents = ["step.stone", "step.grass", "step.wood", "step.gravel", "step.sand", "step.water"];
         
+        for (const event of vanillaEvents) {
+            const type = event.split(".")[1];
+            if (soundGroups[type]) {
+                soundDefs.sound_definitions[event] = {
+                    "category": "player",
+                    "sounds": soundGroups[type].map(p => ({ "name": p, "volume": 1.0, "load_on_low_memory": true }))
+                };
+                log.innerHTML += `MAPPED: ${event} (${soundGroups[type].length} sounds)\n`;
+            }
+        }
+
         addon.file("sound_definitions.json", JSON.stringify(soundDefs, null, 4));
 
         try {
             const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
             const a = document.createElement("a");
             a.href = URL.createObjectURL(content);
-            a.download = "PF_Sound_Fix.mcpack"; 
+            a.download = "PF_Final_Fix.mcpack"; 
             a.click();
-            log.innerHTML += `\n>>> 完了！ ${count} 個の PF 専用音源を統合版に適合させました。`;
+            log.innerHTML += `\n>>> 完了！PF_Final_Fix.mcpack をインポートしてください。`;
         } catch (e) {
             log.innerHTML += `\nERROR: ${e.message}`;
         }
