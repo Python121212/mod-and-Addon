@@ -2,42 +2,42 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v3.7 - Hard Overwrite</title>
+    <title>MOD Engine v3.8 - Vanilla Replacement</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --danger: #ff3e3e; --bg: #050505; }
-        body { background: var(--bg); color: var(--danger); font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
-        .panel { border: 2px solid var(--danger); padding: 25px; display: inline-block; border-radius: 10px; background: #111; width: 90%; max-width: 600px; }
-        button { background: var(--danger); color: #fff; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; }
-        #console { margin-top: 15px; color: #fff; font-size: 10px; text-align: left; height: 150px; overflow-y: scroll; background: #000; border: 1px solid #333; padding: 10px; }
+        :root { --fix: #00ff00; --bg: #000; }
+        body { background: var(--bg); color: var(--fix); font-family: 'Consolas', monospace; text-align: center; padding: 20px; }
+        .box { border: 2px solid var(--fix); padding: 20px; display: inline-block; border-radius: 10px; background: #050505; width: 90%; max-width: 650px; box-shadow: 0 0 20px var(--fix); }
+        button { background: var(--fix); color: #000; border: none; padding: 15px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; border-radius: 5px; }
+        #log { margin-top: 15px; color: #fff; font-size: 11px; text-align: left; height: 180px; overflow-y: auto; background: #111; padding: 10px; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
-<div class="panel">
-    <h2>HARD OVERWRITE v3.7</h2>
-    <p style="font-size:11px;">[物理パス強制上書きモデル]</p>
+<div class="box">
+    <h2>VANILLA REPLACEMENT v3.8</h2>
+    <p style="font-size:11px; color:#888;">[足音・環境音・ブロック音 強制置換モデル]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <button onclick="buildHardPack()">強制上書きパックを生成</button>
+    <button onclick="buildReplacementPack()">バニラ音源を乗っ取る</button>
     
-    <div id="console">ログ: 待機中...</div>
+    <div id="log">ログ: 待機中...<br>※古いパックは必ず削除してから導入してください。</div>
 </div>
 
 <script>
-    async function buildHardPack() {
+    async function buildReplacementPack() {
         const fileInput = document.getElementById('modFile');
-        const consoleLog = document.getElementById('console');
+        const log = document.getElementById('log');
         if (!fileInput.files[0]) return;
 
-        consoleLog.innerHTML = "> 強制構築開始...<br>";
+        log.innerHTML = "> 実行中...<br>";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
-        // 1. マニフェスト (UUIDを刷新)
+        // マニフェスト (UUIDを刷新)
         const manifest = {
             "format_version": 2,
-            "header": { "name": "Hard_Overwrite_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "header": { "name": "Vanilla_Fix_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
             "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
@@ -47,23 +47,39 @@
         for (const path in jar.files) {
             if (path.endsWith(".ogg")) {
                 const blob = await jar.files[path].async("blob");
-                
-                // Javaのパスを解析
-                const rawPath = path.replace(/assets\/[^\/]+\/sounds\//, ""); 
-                
-                // 統合版が「物理的」に音を探しに行く場所に直接置く
-                // 例: sounds/dig/stone1.ogg, sounds/step/grass1.ogg
-                const destPath = "sounds/" + rawPath.toLowerCase();
-                addon.file(destPath, blob);
+                const pathLower = path.toLowerCase();
+                let targetEvent = "";
 
-                // イベント名も登録（二段構え）
-                let eventName = rawPath.replace(".ogg", "").replace(/\//g, ".");
-                soundDefs.sound_definitions[eventName] = {
-                    "category": "neutral",
-                    "sounds": [{ "name": destPath.replace(".ogg", ""), "stream": blob.size > 200000 }]
+                // --- 統合版バニラの音イベント名に強制マッピング ---
+                if (pathLower.includes("step")) {
+                    if (pathLower.includes("grass")) targetEvent = "step.grass";
+                    else if (pathLower.includes("stone")) targetEvent = "step.stone";
+                    else if (pathLower.includes("wood")) targetEvent = "step.wood";
+                    else targetEvent = "step.default";
+                } 
+                else if (pathLower.includes("dig") || pathLower.includes("break")) {
+                    if (pathLower.includes("grass")) targetEvent = "dig.grass";
+                    else if (pathLower.includes("stone")) targetEvent = "dig.stone";
+                    else targetEvent = "dig.default";
+                }
+                else if (pathLower.includes("ambient") || pathLower.includes("environment")) {
+                    targetEvent = "ambient.weather.rain"; // 例として雨音などを置換
+                }
+
+                // 特定のキーワードがない場合は、Javaのパスから推測
+                if (!targetEvent) {
+                    targetEvent = pathLower.replace(/.*sounds\//, "").replace(".ogg", "").replace(/\//g, ".");
+                }
+
+                const internalPath = "sounds/vanilla_fix/" + targetEvent.replace(/\./g, "_") + "_" + Math.floor(Math.random()*100);
+                addon.file(internalPath + ".ogg", blob);
+
+                soundDefs.sound_definitions[targetEvent] = {
+                    "category": pathLower.includes("music") ? "music" : "neutral",
+                    "sounds": [{ "name": internalPath, "stream": blob.size > 200000, "volume": 1.0 }]
                 };
                 
-                consoleLog.innerHTML += `Overwrite: ${destPath}<br>`;
+                log.innerHTML += `Mapping: ${targetEvent}<br>`;
             }
         }
         
@@ -72,9 +88,9 @@
         const content = await addon.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/octet-stream" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(content);
-        a.download = "HardSoundFix.mcpack"; 
+        a.download = "VanillaSoundFix.mcpack"; 
         a.click();
-        consoleLog.innerHTML += `> ✅ 完了。全ての音を物理パスに配置しました。`;
+        log.innerHTML += `> ✅ 完了。バニラ音源の乗っ取りに成功しました。`;
     }
 </script>
 </body>
