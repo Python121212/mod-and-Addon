@@ -2,89 +2,95 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MOD Engine v3.2 - Sound Archiver</title>
+    <title>MOD Engine v3.3 - Force Export</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --main: #ffeb3b; --bg: #0d1117; }
-        body { background: #000; color: var(--main); font-family: monospace; text-align: center; padding: 20px; }
-        .box { border: 2px solid var(--main); padding: 20px; display: inline-block; border-radius: 10px; background: #111; max-width: 800px; }
-        textarea { width: 100%; height: 150px; background: #000; color: #fff; border: 1px solid #444; margin-top: 10px; font-size: 11px; }
-        button { background: var(--main); color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; }
-        #log { margin-top: 15px; color: #888; font-size: 12px; }
+        :root { --sound-blue: #00d2ff; --bg: #050505; }
+        body { background: var(--bg); color: var(--sound-blue); font-family: 'Courier New', monospace; text-align: center; padding: 30px; }
+        .main-card { border: 1px solid var(--sound-blue); padding: 25px; display: inline-block; border-radius: 15px; background: #0a0a0a; box-shadow: 0 0 20px rgba(0,210,255,0.2); }
+        button { background: var(--sound-blue); color: #000; border: none; padding: 18px 35px; font-weight: bold; cursor: pointer; margin-top: 20px; border-radius: 5px; width: 100%; transition: 0.2s; }
+        button:hover { background: #fff; box-shadow: 0 0 15px #fff; }
+        #status-log { margin-top: 15px; color: #555; font-size: 11px; text-transform: uppercase; }
+        input[type="file"] { margin-bottom: 20px; color: #888; }
     </style>
 </head>
 <body>
 
-<div class="box">
-    <h1>SOUND ARCHIVER v3.2</h1>
-    <p>Java版 .ogg を統合版サウンド定義へ変換</p>
+<div class="main-card">
+    <h2 style="margin-top:0">MOD ENGINE v3.3</h2>
+    <p style="font-size:12px; color:#aaa;">[SOUND + ATOMIC FIX + EXTENSION LOCK]</p>
     
     <input type="file" id="modFile" accept=".jar">
-    <textarea id="sound-json" readonly placeholder="生成される sounds.json"></textarea>
-    <button onclick="buildWithSounds()">サウンド統合 & .mcpack発行</button>
+    <button onclick="executeSecureBuild()">解析 & .mcpack を強制発行</button>
     
-    <div id="log">JARを選択してください</div>
+    <div id="status-log">Ready. JARをスキャンして音と画像を抽出します。</div>
 </div>
 
 <script>
-    async function buildWithSounds() {
+    async function executeSecureBuild() {
         const fileInput = document.getElementById('modFile');
-        const log = document.getElementById('log');
-        const soundArea = document.getElementById('sound-json');
-        if (!fileInput.files[0]) return;
+        const log = document.getElementById('status-log');
+        if (!fileInput.files[0]) return alert("JARを選択してください");
 
-        log.innerText = "⏳ 音源スキャン中...";
+        log.innerText = "Processing: 構築中...";
         const jar = await JSZip.loadAsync(fileInput.files[0]);
         const addon = new JSZip();
         
-        let soundDefinitions = { "individual_event_sounds": { "events": {} } };
-        let soundCount = 0;
-
-        // 1. 基本構成 (Atomic Fixベース)
+        // 1. マニフェスト (UUIDを毎回変えて衝突回避)
         const manifest = {
             "format_version": 2,
-            "header": { "name": "Sound_Pack_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1, 0, 0], "min_engine_version": [1, 21, 0] },
-            "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1, 0, 0] }]
+            "header": { "name": "Converted_Pack_" + Date.now(), "uuid": crypto.randomUUID(), "version": [1,0,0], "min_engine_version": [1,21,0] },
+            "modules": [{ "type": "resources", "uuid": crypto.randomUUID(), "version": [1,0,0] }]
         };
         addon.file("manifest.json", JSON.stringify(manifest));
 
-        // 2. 音源ファイルと定義の抽出
+        let soundDefs = { "individual_event_sounds": { "events": {} } };
+
+        // 2. 音と画像の救出
         for (const path in jar.files) {
-            // .oggファイルを探す
+            const file = jar.files[path];
+            if (file.dir) continue;
+
+            const fileName = path.split('/').pop().toLowerCase().replace(/[^a-z0-9.]/g, "_");
+
             if (path.endsWith(".ogg")) {
-                const blob = await jar.files[path].async("blob");
-                const fileName = path.split('/').pop().replace(".ogg", "");
-                const safeName = fileName.replace(/[^a-z0-9]/g, "_");
-                
-                // 統合版の標準パスに配置
-                addon.file("sounds/mod/" + safeName + ".ogg", blob);
-                
-                // sounds.json への登録
-                soundDefinitions.individual_event_sounds.events[`mod.${safeName}`] = {
-                    "sounds": [ `sounds/mod/${safeName}` ]
+                const blob = await file.async("blob");
+                addon.file("sounds/mod/" + fileName, blob);
+                soundDefs.individual_event_sounds.events["mod." + fileName.replace(".ogg", "")] = {
+                    "sounds": ["sounds/mod/" + fileName.replace(".ogg", "")]
                 };
-                soundCount++;
-            }
-            // ついでにテクスチャも救出
-            if (path.endsWith(".png")) {
-                const blob = await jar.files[path].async("blob");
-                addon.file(path.split('/').pop(), blob);
+            } else if (path.endsWith(".png")) {
+                const blob = await file.async("blob");
+                addon.file("textures/items/" + fileName, blob);
             }
         }
-
-        // 3. sounds.json を書き出し
-        const finalSounds = JSON.stringify(soundDefinitions, null, 4);
-        addon.file("sounds.json", finalSounds);
-        soundArea.value = finalSounds;
-
-        // 4. ZIP生成 (STOREモード)
-        const content = await addon.generateAsync({ type: "blob", compression: "STORE" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(content);
-        a.download = "Sound_Fix_" + Date.now() + ".mcpack";
-        a.click();
         
-        log.innerText = `✅ 完了！音源 ${soundCount} 個を登録しました。`;
+        addon.file("sounds.json", JSON.stringify(soundDefs, null, 4));
+
+        // 3. 強制ダウンロード処理 (拡張子を固定)
+        try {
+            const content = await addon.generateAsync({
+                type: "blob",
+                compression: "STORE",
+                mimeType: "application/octet-stream" // ZIPと誤認させないためのMIME
+            });
+
+            const url = URL.createObjectURL(content);
+            const a = document.createElement("a");
+            a.href = url;
+            // .zipを付けさせないためのファイル名指定
+            a.download = "ConvertedMod.mcpack"; 
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                log.innerText = "SUCCESS: フォルダから .mcpack を開いてください";
+            }, 100);
+        } catch (e) {
+            log.innerText = "ERROR: " + e.message;
+        }
     }
 </script>
 </body>
